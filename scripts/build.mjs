@@ -28,7 +28,7 @@ const BACKEND_DIR = join(ROOT, "backend");
 const WEBVIEW_DIR = join(ROOT, "webview");
 const SHELL_DIR = join(ROOT, "shell");
 const TAURI_DIR = join(SHELL_DIR, "src-tauri");
-const DELIVERY = join(ROOT, "delivery", "0.4.0");
+const DELIVERY = join(ROOT, "delivery", "0.5.0");
 const PRODUCT_NAME = "某科学的Agent";
 const SKIP_SHELL = process.argv.includes("--skip-shell");
 /** Jump straight to the installer (useful while iterating on the Rust shell). */

@@ -8,12 +8,13 @@ import { Welcome } from "@/components/welcome";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { DiffPanel } from "@/components/diff-panel";
 import { EngineError } from "@/components/engine-error";
-import { pruneExecutionMessages } from "@/lib/execution-window";
+import { currentTurnSteps, pruneExecutionMessages } from "@/lib/execution-window";
 import { FileDiff, Folder, FolderOpen, Loader2, MessageCircle, RefreshCw, Wifi, WifiOff, X } from "lucide-react";
 
 export function App() {
 	const api = useChatSession();
 	const [capacity, setCapacity] = useState(8);
+	const [eviction, setEviction] = useState<{ key: string; ids: Set<string> }>({ key: "", ids: new Set() });
 	const [dialogOpen, setDialogOpen] = useState(false);
 	const [dialogMode, setDialogMode] = useState<"create" | "update">("create");
 	const [diffOpen, setDiffOpen] = useState(false);
@@ -43,15 +44,24 @@ export function App() {
 	}, [api.saveTheme, api.setError]);
 
 	const protectedToolCallIds = useMemo(() => api.approvals.map((item) => item.toolCallId), [api.approvals]);
+	const lastUserId = api.messages.findLast((message) => message.role === "user")?.id ?? "";
+	const executionKey = `${api.sessionId ?? ""}:${lastUserId}`;
+	const evictedToolIds = useMemo(() => eviction.key === executionKey ? eviction.ids : new Set<string>(), [eviction, executionKey]);
 	const displayMessages = useMemo(
-		() => pruneExecutionMessages(api.messages, capacity, protectedToolCallIds),
-		[api.messages, capacity, protectedToolCallIds],
+		() => pruneExecutionMessages(api.messages.filter((message) => !evictedToolIds.has(message.id)), capacity, protectedToolCallIds),
+		[api.messages, capacity, protectedToolCallIds, evictedToolIds],
 	);
+	useEffect(() => {
+		const shown = new Set(displayMessages.map((message) => message.id));
+		const dropped = currentTurnSteps(api.messages).filter((message) => !shown.has(message.id)).map((message) => message.id);
+		if (eviction.key !== executionKey || dropped.some((id) => !eviction.ids.has(id))) {
+			setEviction({ key: executionKey, ids: new Set([...(eviction.key === executionKey ? eviction.ids : []), ...dropped]) });
+		}
+	}, [api.messages, displayMessages, eviction, executionKey]);
 
 	const onClear = useCallback(() => {
-		// The canvas calls this once a finished run has collapsed; the prune is
-		// applied reactively, so there is nothing to mutate here.
-	}, []);
+		setEviction((current) => ({ key: executionKey, ids: new Set([...(current.key === executionKey ? current.ids : []), ...currentTurnSteps(api.messages).map((message) => message.id)]) }));
+	}, [api.messages, executionKey]);
 
 	const openCreate = useCallback((workspaceRoot?: string) => {
 		setDraftKind("work");

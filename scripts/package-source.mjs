@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
-const DELIVERY = join(ROOT, "delivery", "0.4.0");
+const DELIVERY = join(ROOT, "delivery", "0.5.0");
 const version = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
 const EXCLUDES = [
 	"node_modules",

@@ -1,7 +1,7 @@
 import { Check, Circle, Loader2, Terminal, X, FileText, Search, Pencil, ShieldQuestion } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatMessage, ChatSessionStatus } from "@/lib/chat-schema";
-import { executionCapacity, executionOutcome, executionPayload, executionFailed } from "@/lib/execution-window";
+import { currentTurnSteps, executionCapacity, executionDescription, executionOutcome, executionPayload, executionFailed } from "@/lib/execution-window";
 import type { ToolApprovalRequestItem } from "@/hooks/chat-session/types";
 
 const COLLAPSE_HOLD_MS = 1200;
@@ -28,13 +28,12 @@ export function ExecutionCanvas({
 	onReject: (requestId: string) => void;
 }) {
 	const root = useRef<HTMLDivElement>(null);
-	const gradientId = useId().replace(/:/g, "");
 	const [maxHeight, setMaxHeight] = useState<number>();
 	const [open, setOpen] = useState(false);
 	const [selected, setSelected] = useState<string | null>(null);
 	const [now, setNow] = useState(Date.now());
 	const busy = ["starting", "running", "stopping"].includes(status) || approvals.length > 0;
-	const steps = messages.filter((message) => message.role === "tool");
+	const steps = currentTurnSteps(messages);
 	const detail = steps.find((message) => message.id === selected);
 	const detailApproval = approvals.find((item) => item.toolCallId === detail?.meta?.toolCallId);
 
@@ -60,7 +59,7 @@ export function ExecutionCanvas({
 		};
 	}, [busy, onClear, sessionId]);
 
-	// Close the detail panel when its node was evicted by the width budget.
+	// Close the detail panel when its node was evicted by the height budget.
 	useEffect(() => {
 		if (selected && !steps.some((message) => message.id === selected)) setSelected(null);
 	}, [steps, selected]);
@@ -68,13 +67,14 @@ export function ExecutionCanvas({
 	useEffect(() => {
 		if (!root.current) return;
 		const observer = new ResizeObserver(() => {
-			onCapacity(executionCapacity(root.current?.getBoundingClientRect().width ?? 0));
-			setMaxHeight((root.current?.closest("main")?.getBoundingClientRect().height ?? window.innerHeight) * 0.4);
+			const height = (root.current?.closest("main")?.getBoundingClientRect().height ?? window.innerHeight) * 0.4;
+			setMaxHeight(height);
+			onCapacity(executionCapacity(height, approvals.length));
 		});
 		observer.observe(root.current);
 		if (root.current.closest("main")) observer.observe(root.current.closest("main")!);
 		return () => observer.disconnect();
-	}, [onCapacity]);
+	}, [onCapacity, approvals.length]);
 
 	useEffect(() => {
 		if (!busy) return;
@@ -89,12 +89,12 @@ export function ExecutionCanvas({
 					<span>
 						<Circle size={7} fill="currentColor" /> {busy ? "正在执行" : status === "completed" ? "执行完成" : "执行已结束"}
 					</span>
-					<span>仅显示最新步骤</span>
+					<span>实时步骤 · {steps.length}</span>
 				</header>
-				<div className="harness-node-track">
+				<div className="harness-trace-track" role="list" aria-label="本轮执行步骤">
 					{steps.length === 0 ? (
 						<div className="harness-wait">
-							<Loader2 size={16} className="animate-spin" />
+							<Loader2 size={14} className="animate-spin" />
 							正在连接模型，等待下一步
 						</div>
 					) : (
@@ -106,45 +106,32 @@ export function ExecutionCanvas({
 							const interrupted = !busy && live;
 							const failed = executionFailed(payload) || interrupted;
 							const name = step.meta?.toolName ?? "工具";
-							const Icon = /read|file/.test(name) ? FileText : /search|grep|list/.test(name) ? Search : /write|edit|patch/.test(name) ? Pencil : Terminal;
+							const Icon = /read|file/i.test(name) ? FileText : /search|grep|list/i.test(name) ? Search : /write|edit|patch/i.test(name) ? Pencil : Terminal;
 							const State = approval ? ShieldQuestion : running ? Loader2 : failed ? X : Check;
 							const label = executionOutcome(step, running, interrupted, !!approval);
 							const timing = running
-								? ` · ${Math.max(0, Math.floor((now - step.createdAt) / 1000))}s`
+								? `${Math.max(0, Math.floor((now - step.createdAt) / 1000))}s`
 								: step.meta?.durationMs !== undefined
-									? ` · ${(step.meta.durationMs / 1000).toFixed(1)}s`
+									? `${(step.meta.durationMs / 1000).toFixed(1)}s`
 									: "";
 							return (
-								<div className="harness-node-group" key={step.id}>
-									{index > 0 && (
-										<svg className="harness-connector" viewBox="0 0 32 8" aria-hidden="true">
-											<defs>
-												<linearGradient id={`${gradientId}-${index}`}>
-													<stop stopColor="currentColor" stopOpacity="0" />
-													<stop offset="1" stopColor="currentColor" />
-												</linearGradient>
-											</defs>
-											<path d="M0 4H32" />
-											<path style={{ stroke: `url(#${gradientId}-${index})` }} className={busy ? "harness-flow" : ""} d="M0 4H32" />
-										</svg>
-									)}
+								<div className="harness-trace-item" role="listitem" key={step.id}>
 									<button
 										type="button"
-										className="harness-node"
+										className="harness-trace-row"
 										data-active={running}
 										data-state={approval ? "approval" : failed ? "failed" : "done"}
 										onClick={() => setSelected(selected === step.id ? null : step.id)}
 										aria-expanded={selected === step.id}
+										aria-label={`${name}，${executionDescription(step)}，${label}${timing ? `，${timing}` : ""}，查看详情`}
 									>
-										<span className="harness-node-top">
-											<Icon size={18} />
-											<State size={14} className={running && !approval ? "animate-spin" : ""} />
-										</span>
-										<strong>{name}</strong>
-										<span>
-											{label}
-											{timing}
-										</span>
+										<span className="harness-trace-index">{String(index + 1).padStart(2, "0")}</span>
+										<span className="harness-trace-branch" aria-hidden="true" />
+										<Icon className="harness-trace-icon" size={13} aria-hidden="true" />
+										<strong className="harness-trace-name">{name}</strong>
+										<span className="harness-trace-description"><span>{executionDescription(step)}</span></span>
+										<span className="harness-trace-status"><State size={12} className={running && !approval ? "animate-spin" : ""} aria-hidden="true" />{label}{timing ? ` · ${timing}` : ""}</span>
+										<span className="harness-trace-merge" aria-hidden="true" />
 									</button>
 								</div>
 							);
