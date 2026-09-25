@@ -1,0 +1,19 @@
+{
+	"name": "harness",
+	"version": "0.4.0",
+	"private": true,
+	"workspaces": ["backend", "webview", "shell"],
+	"scripts": {
+		"fetch:engine": "bun scripts/fetch-opencode.mjs",
+		"dev:backend": "cd backend && bun run src/index.ts",
+		"dev:web": "cd webview && bun run dev",
+		"dev:shell": "cd shell && bun run dev",
+		"build": "bun scripts/build.mjs",
+		"build:backend-only": "bun scripts/build.mjs --skip-shell",
+		"package:source": "bun scripts/package-source.mjs",
+		"verify:phase1": "bun testing/phase1-validate.ts",
+		"verify:integration": "bun testing/integration-harness.ts",
+		"verify": "bun run verify:phase1 && bun run verify:integration",
+		"typecheck": "cd backend && bun run typecheck && cd ../webview && bun run typecheck"
+	}
+}

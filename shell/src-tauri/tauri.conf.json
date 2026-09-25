@@ -1,0 +1,43 @@
+{
+	"$schema": "https://schema.tauri.app/config/2",
+	"productName": "某科学的Agent",
+	"version": "0.4.0",
+	"identifier": "local.harness.app",
+	"build": {
+		"frontendDist": "../../webview/dist"
+	},
+	"app": {
+		"windows": [],
+		"security": {
+			"csp": null
+		}
+	},
+	"bundle": {
+		"active": true,
+		"targets": ["nsis"],
+		"publisher": "某科学的Agent",
+		"shortDescription": "某科学的Agent — Work 与 Chat 桌面助手",
+		"longDescription": "某科学的Agent 提供项目工作模式和无需工作区的纯聊天模式，使用内置 OpenCode 引擎并支持多个 API 配置。",
+		"icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico"],
+		"resources": {
+			"../../vendor/opencode/bin/opencode.exe": "opencode/opencode.exe",
+			"../../vendor/opencode/PIN.json": "opencode/PIN.json",
+			"../../vendor/opencode/LICENSE": "opencode/LICENSE",
+			"../../vendor/skills": "skills",
+			"../../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md",
+			"../../HARNESS.md": "HARNESS.md"
+		},
+		"windows": {
+			"webviewInstallMode": {
+				"type": "downloadBootstrapper",
+				"silent": true
+			},
+			"nsis": {
+				"installMode": "currentUser",
+				"languages": ["SimpChinese", "English"],
+				"displayLanguageSelector": false,
+				"installerHooks": "nsis/installer-hooks.nsh"
+			}
+		}
+	}
+}

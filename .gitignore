@@ -1,0 +1,49 @@
+# Local dependencies and compiled output
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+build/
+**/build/
+out/
+**/out/
+gen/
+**/gen/
+shell/src-tauri/target/
+shell/src-tauri/bin/
+shell/src-tauri/icons/*
+!shell/src-tauri/icons/brand.svg
+!shell/src-tauri/icons/32x32.png
+!shell/src-tauri/icons/128x128.png
+!shell/src-tauri/icons/icon.ico
+
+# Reproducible third-party engine payloads (see vendor/opencode/PIN.json)
+vendor/opencode/bin/
+vendor/opencode/sdk/
+vendor/opencode/cli-package.json
+vendor/_skills_*/
+
+# Release assets are attached to GitHub Releases, not committed
+delivery/
+release/
+*.exe
+*.zip
+*.tgz
+
+# Machine-local reports and credentials
+testing/*.log
+testing/*-report*.json
+testing/real-model-*.json
+testing/opencode-event-samples.json
+*.stale-*
+*.tmp
+*.removed
+.env
+.env.*
+*.pem
+*.key
+credentials.bin
+runtime.json
+
+# This project uses Bun, not npm
+package-lock.json*

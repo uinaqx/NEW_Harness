@@ -1,0 +1,16 @@
+{
+	"name": "harness-backend",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "bun run src/index.ts",
+		"start": "bun run src/index.ts",
+		"build:bin": "bun build ./src/index.ts --outfile ./dist/harness-backend.js --target bun --compile",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@types/bun": "latest",
+		"typescript": "^5.5.0"
+	}
+}

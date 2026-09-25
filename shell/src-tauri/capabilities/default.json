@@ -1,0 +1,7 @@
+{
+	"$schema": "../gen/schemas/desktop-schema.json",
+	"identifier": "default",
+	"description": "Harness default capability — the webview only talks to the local backend over WebSocket; no Tauri commands are invoked.",
+	"windows": ["main"],
+	"permissions": ["core:default"]
+}

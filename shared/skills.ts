@@ -1,0 +1,23 @@
+/** Bundled Agent Skills. Each id matches vendor/skills/<id>/SKILL.md. */
+export const BUILTIN_SKILLS = [
+	{ id: "algorithmic-art", label: "算法艺术", description: "生成可复现的程序化视觉作品" },
+	{ id: "brand-guidelines", label: "品牌规范", description: "按品牌配色和字体制作内容" },
+	{ id: "canvas-design", label: "画布设计", description: "制作海报、图形与静态视觉作品" },
+	{ id: "frontend-design", label: "前端设计", description: "构建有辨识度的网页界面" },
+	{ id: "internal-comms", label: "内部沟通", description: "撰写状态更新和工作简报" },
+	{ id: "mcp-builder", label: "MCP 服务", description: "设计和实现 MCP 服务" },
+	{ id: "skill-creator", label: "创建技能", description: "编写和改进 Agent Skill" },
+	{ id: "slack-gif-creator", label: "动图制作", description: "生成适用于聊天的 GIF" },
+	{ id: "theme-factory", label: "主题工厂", description: "为文档和页面应用视觉主题" },
+	{ id: "web-artifacts-builder", label: "网页作品", description: "制作交互式网页作品" },
+	{ id: "webapp-testing", label: "网页测试", description: "测试本地 Web 应用" },
+	{ id: "brainstorming", label: "创意讨论", description: "先梳理问题，再形成实现方向" },
+	{ id: "systematic-debugging", label: "系统调试", description: "按证据定位并修复缺陷" },
+	{ id: "test-driven-development", label: "测试驱动", description: "先建立行为验证，再修改实现" },
+	{ id: "verification-before-completion", label: "完成前验证", description: "交付前运行并核对验证结果" },
+	{ id: "writing-plans", label: "编写计划", description: "拆分可执行的开发步骤" },
+	{ id: "using-git-worktrees", label: "Git 工作树", description: "在隔离工作树中开展改动" },
+	{ id: "finishing-a-development-branch", label: "完成分支", description: "整理验证、合并和交付步骤" },
+	{ id: "receiving-code-review", label: "处理代码审查", description: "核实并落实审查意见" },
+	{ id: "writing-skills", label: "编写技能规范", description: "测试和完善技能指令" },
+] as const;

@@ -1,0 +1,95 @@
+/* ============================================================
+   Harness webview — engine-era additions.
+   Loaded after index.css: conversation layout, canvas node states,
+   approval detail, diff panel, engine error page, settings controls.
+   ============================================================ */
+
+.app-main { position: relative; }
+.app-conversation { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+.engine-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted-foreground); border: 1px solid var(--border); border-radius: 999px; padding: 3px 9px; }
+.engine-chip[data-state="failed"], .engine-chip[data-state="crashed"] { color: var(--destructive); border-color: var(--destructive); }
+.engine-chip[data-state="starting"] { animation: harness-breathe 2s infinite; }
+.transport-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted-foreground); }
+
+.transport-banner { display: flex; align-items: center; gap: 10px; padding: 8px 16px; font-size: 12px; border-bottom: 1px solid var(--border); background: var(--card); color: var(--destructive); }
+.transport-banner span { flex: 1; }
+
+.sidebar-empty { padding: 20px 14px; font-size: 12px; color: var(--muted-foreground); }
+.sidebar-item .si-legacy { display: inline-flex; align-items: center; gap: 3px; }
+.sidebar-item .si-del { margin-top: 6px; font-size: 10px; color: var(--muted-foreground); display: inline-flex; gap: 4px; align-items: center; align-self: flex-start; }
+.sidebar-item .si-del:hover { color: var(--destructive); }
+
+.msg-status-line { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted-foreground); padding: 2px 0 2px 36px; }
+.msg-status-line[data-bad="true"] { color: var(--destructive); }
+.legacy-tag { display: inline-block; font-size: 10px; border: 1px dashed var(--border); border-radius: 4px; padding: 1px 6px; color: var(--muted-foreground); margin-bottom: 6px; }
+
+/* --- canvas node states + richer approval card --- */
+.harness-node { border: 1px solid var(--border); background: var(--harness-node); }
+.harness-node[data-state="approval"] { border-color: var(--warning); }
+.harness-node[data-state="failed"] { border-color: var(--destructive); }
+.harness-approval { align-items: flex-start; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--card); }
+.harness-approval .approval-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.harness-approval .approval-summary { font-size: 11px; color: var(--muted-foreground); overflow-wrap: anywhere; }
+.harness-approval button { border: 1px solid var(--border); padding: 6px 12px; border-radius: 6px; }
+.harness-approval button.btn-primary { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+
+/* --- diff panel --- */
+.diff-panel { position: absolute; top: var(--window-title-bar-height); right: 0; bottom: 0; width: min(620px, 58%); display: flex; flex-direction: column; background: var(--background); border-left: 1px solid var(--border); box-shadow: -12px 0 32px rgb(0 0 0 / 18%); z-index: 20; }
+.diff-panel > header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.diff-count { font-size: 11px; color: var(--muted-foreground); }
+.diff-stale { font-size: 10px; border: 1px solid var(--warning); border-radius: 4px; padding: 1px 5px; color: var(--warning); }
+.diff-panel .btn { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); }
+.diff-panel .btn:hover { background: var(--surface-hover); }
+.diff-empty { padding: 18px; font-size: 12px; color: var(--muted-foreground); }
+.diff-split { flex: 1; min-height: 0; display: grid; grid-template-columns: 190px 1fr; }
+.diff-files { list-style: none; margin: 0; padding: 6px; overflow-y: auto; border-right: 1px solid var(--border); }
+.diff-files button { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 8px; border-radius: 6px; font-size: 11px; text-align: left; }
+.diff-files button:hover { background: var(--surface-hover); }
+.diff-files button[data-active="true"] { background: var(--sidebar-accent); }
+.diff-files .diff-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diff-files .diff-stat { font-size: 10px; color: var(--muted-foreground); display: flex; gap: 4px; }
+.diff-files .diff-stat .del { color: var(--muted-foreground); }
+.diff-detail { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.diff-path { padding: 8px 12px 0; font-size: 11px; overflow-wrap: anywhere; }
+.diff-status { padding: 2px 12px 8px; font-size: 10px; color: var(--muted-foreground); }
+.diff-body { flex: 1; margin: 0; overflow: auto; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 11.5px; line-height: 1.55; padding: 8px 0 16px; }
+.diff-line { display: flex; gap: 8px; padding: 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.diff-gutter { width: 10px; flex-shrink: 0; opacity: .6; }
+.diff-add { background: var(--surface-hover); }
+.diff-del { background: var(--card); opacity: .7; }
+.diff-hunk { color: var(--muted-foreground); }
+.diff-meta { color: var(--muted-foreground); opacity: .8; }
+
+/* --- engine error page --- */
+.engine-error { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 32px 24px; text-align: center; overflow-y: auto; }
+.engine-error .ee-icon { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--destructive); color: var(--destructive); display: flex; align-items: center; justify-content: center; }
+.engine-error h2 { margin: 0; font-size: 16px; }
+.engine-error p { margin: 0; max-width: 620px; font-size: 12.5px; color: var(--muted-foreground); overflow-wrap: anywhere; }
+.engine-error .ee-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 20px; width: min(720px, 100%); margin: 6px 0; text-align: left; font-size: 11.5px; }
+.engine-error .ee-facts div { display: flex; gap: 8px; }
+.engine-error dt { color: var(--muted-foreground); min-width: 62px; }
+.engine-error dd { margin: 0; overflow-wrap: anywhere; }
+.engine-error .ee-actions { display: flex; gap: 8px; }
+.engine-error .ee-diagnostics { width: min(860px, 100%); max-height: 320px; overflow: auto; text-align: left; font-size: 11px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px; white-space: pre-wrap; }
+
+/* --- settings dialog --- */
+.dialog-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.dialog-head button { padding: 4px; border-radius: 6px; }
+.dialog-head button:hover { background: var(--surface-hover); }
+.dialog .hint { font-size: 11px; color: var(--muted-foreground); margin-top: 4px; }
+.dialog .segmented { display: flex; gap: 6px; }
+.dialog .seg { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+.dialog .seg[data-active="true"] { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+.dialog .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.dialog .check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; cursor: pointer; }
+.dialog .badge-ok { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; color: var(--muted-foreground); }
+.dialog .inline-ok, .dialog .inline-bad { display: flex; align-items: center; gap: 6px; font-size: 11.5px; margin-top: 6px; }
+.dialog .inline-ok { color: var(--foreground); }
+.dialog .inline-bad { color: var(--destructive); }
+.dialog .test-ok, .dialog .test-bad { display: flex; flex-direction: column; gap: 4px; font-size: 12px; border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-top: 10px; }
+.dialog .test-ok strong, .dialog .test-bad strong { display: flex; align-items: center; gap: 6px; }
+.dialog .test-bad { border-color: var(--destructive); }
+.dialog .test-ok pre, .dialog .test-bad pre { margin: 0; max-height: 140px; overflow: auto; font-size: 11px; white-space: pre-wrap; color: var(--muted-foreground); }
+.dialog .test-kind { font-size: 10px; color: var(--muted-foreground); }
+.dialog-actions { display: flex; align-items: center; gap: 8px; margin-top: 14px; }

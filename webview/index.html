@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>某科学的Agent</title>
+		<script>
+			// Apply the last choice before React and CSS paint the first frame.
+			try { document.documentElement.classList.toggle("dark", localStorage.getItem("harness-theme") !== "light"); } catch {}
+			// Injected so the WS client can find the backend in both dev and prod.
+			window.__SIDECAR_WS_ENDPOINT__ = "ws://127.0.0.1:3126/transport";
+		</script>
+	</head>
+	<body>
+		<div id="root"></div>
+		<script type="module" src="/src/main.tsx"></script>
+	</body>
+</html>

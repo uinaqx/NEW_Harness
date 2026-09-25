@@ -1,0 +1,14 @@
+{
+	"name": "harness-shell",
+	"version": "0.2.0",
+	"private": true,
+	"scripts": {
+		"tauri": "tauri",
+		"dev": "tauri dev",
+		"build": "tauri build",
+		"build:debug": "tauri build --debug"
+	},
+	"devDependencies": {
+		"@tauri-apps/cli": "^2.0.0"
+	}
+}

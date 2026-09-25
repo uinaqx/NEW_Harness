@@ -1,0 +1,29 @@
+{
+  "version": "1.18.31",
+  "channel": "npm",
+  "server": {
+    "package": "opencode-windows-x64",
+    "artifactUrl": "https://registry.npmjs.org/opencode-windows-x64/-/opencode-windows-x64-1.18.31.tgz",
+    "tarballSha256": "8a300ee2b3210ccc6894ff27d21bdb0a60ee44107389c49b743b4caed10aa5cf",
+    "tarballSize": 60152538,
+    "binaryPath": "bin/opencode.exe",
+    "binarySize": 179998248,
+    "binarySha256": "0242a0dc705af67c90882b456a36b619883c1c786aad8fe071a1bc64e5d1d440"
+  },
+  "cli": {
+    "package": "opencode-ai",
+    "artifactUrl": "https://registry.npmjs.org/opencode-ai/-/opencode-ai-1.18.31.tgz",
+    "tarballSha256": "b6baa53003cd2e096981474ba9461a33aba2e6948b2b4b08c4aa1a88e6dc1b59",
+    "tarballSize": 3051
+  },
+  "sdk": {
+    "package": "@opencode-ai/sdk",
+    "artifactUrl": "https://registry.npmjs.org/@opencode-ai/sdk/-/sdk-1.18.31.tgz",
+    "tarballSha256": "0b5cd54941e51cd00c6261c4674a4d9f51a82710ec3ad48be85a9e316bb95000",
+    "tarballSize": 101053
+  },
+  "verifiedAtStaging": {
+    "bin/opencode.exe": "0242a0dc705af67c90882b456a36b619883c1c786aad8fe071a1bc64e5d1d440",
+    "matches": true
+  }
+}
