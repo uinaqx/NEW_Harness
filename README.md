@@ -7,7 +7,7 @@
 
 ## 下载与使用
 
-Windows 安装包位于 [Releases](https://github.com/uinaqx/NEW_Harness/releases)。下载 `某科学的Agent_0.4.0_x64-setup.exe` 并运行；不需要另外安装 OpenCode、Bun 或 Node。首次启动后，打开左下角「设置」，添加具名 API 配置，选择 OpenAI-compatible Chat Completions 或 Anthropic Messages，填写 Base URL、模型 ID 和 API Key，并单独执行「测试连接」。每个配置可填写多个模型 ID（每行一个）；Key 使用 Windows DPAPI 加密保存。
+Windows 安装包位于 [Releases](https://github.com/uinaqx/NEW_Harness/releases)。下载 `New-Harness_0.4.0_x64-setup.exe` 并运行；不需要另外安装 OpenCode、Bun 或 Node。首次启动后，打开左下角「设置」，添加具名 API 配置，选择 OpenAI-compatible Chat Completions 或 Anthropic Messages，填写 Base URL、模型 ID 和 API Key，并单独执行「测试连接」。每个配置可填写多个模型 ID（每行一个）；Key 使用 Windows DPAPI 加密保存。
 
 - **Work：** 点「Work 新对话」或在项目下添加对话，在输入框选择访问位置与模型后发送任务。可查看工具执行画布、授权请求与文件差异；修改文件和执行命令默认询问。
 - **Chat：** 点「Chat 开聊」直接发送消息，不需要工作区；它不提供本地文件、命令或技能工具。Chat 对话排列在项目列表下方。
