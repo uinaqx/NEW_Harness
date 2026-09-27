@@ -41,13 +41,14 @@ import { homedir } from "node:os";
 import { mkdir, readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { BUILTIN_SKILLS } from "../../shared/skills";
+import { readWorkspaceFile } from "./workspace-files";
 
 async function nativePicker(kind: "folder" | "files"): Promise<string[]> {
 	if (process.platform !== "win32") throw new UserFacingError("当前平台请手动填写绝对路径。");
 	const script = kind === "folder"
 		? 'Add-Type -AssemblyName System.Windows.Forms; $d=New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description="选择项目文件夹"; if($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){[Console]::Out.WriteLine($d.SelectedPath)}'
 		: 'Add-Type -AssemblyName System.Windows.Forms; $d=New-Object System.Windows.Forms.OpenFileDialog; $d.Multiselect=$true; $d.Title="选择要附加的文件"; if($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){$d.FileNames | ConvertTo-Json -Compress | Write-Output}';
-	const child = Bun.spawn({ cmd: ["powershell.exe", "-NoProfile", "-STA", "-Command", script], stdout: "pipe", stderr: "pipe", windowsHide: true });
+	const child = Bun.spawn({ cmd: ["powershell.exe", "-NoProfile", "-STA", "-Command", '[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); ' + script], stdout: "pipe", stderr: "pipe", windowsHide: true });
 	const timer = setTimeout(() => child.kill(), 120_000);
 	try {
 		const output = await new Response(child.stdout).text();
@@ -288,7 +289,8 @@ export async function dispatchCommand(req: DesktopTransportRequest): Promise<Des
 				const protocol = args.protocol === "anthropic" ? "anthropic" : "openai-compatible";
 				const baseUrl = String(args.baseUrl || "").trim();
 				const models = normalizeModels(args.models);
-				if (!name || !baseUrl || !models.length) return respond(req, false, undefined, "请填写 API 名称、Base URL 和至少一个模型 ID。");
+				if (!name || !baseUrl || !models.length) return respond(req, false, undefined, "请填写 API 名称、Base URL 和模型 ID。");
+				if (models.length !== 1) return respond(req, false, undefined, "每份 API 配置只能填写一个模型 ID，请为其他模型添加独立配置。");
 				if (!/^https?:\/\//i.test(baseUrl)) return respond(req, false, undefined, "Base URL 必须以 http:// 或 https:// 开头。");
 				const profile: ApiProfile = { id, name, protocol, baseUrl, models };
 				const profiles = settings.profiles.some((item) => item.id === id)
@@ -406,7 +408,7 @@ export async function dispatchCommand(req: DesktopTransportRequest): Promise<Des
 				const profile = settings.profiles.find((item) => item.id === profileId)!;
 				if (!loadProfileKey(profileId)) return respond(req, false, undefined, `请先为“${profile.name}”配置 API Key。`);
 				const selectedModel = typeof args.model === "string" && args.model.trim() ? args.model.trim() : profile.models[0];
-				if (!profile.models.includes(selectedModel)) await saveSettings({ profiles: settings.profiles.map((item) => item.id === profileId ? { ...item, models: [...item.models, selectedModel] } : item) });
+				if (!profile.models.includes(selectedModel)) return respond(req, false, undefined, "请先在设置中为该模型保存 API 配置。");
 				const workspaceRoot = kind === "chat" ? paths.chatWorkspace() : String(args.workspaceRoot || "");
 				if (kind === "work") {
 					if (!workspaceRoot) return respond(req, false, undefined, "请先选择工作区目录");
@@ -512,7 +514,7 @@ export async function dispatchCommand(req: DesktopTransportRequest): Promise<Des
 				if (!profile) return respond(req, false, undefined, "所选 API 配置不存在。");
 				if (typeof patch.model === "string" && patch.model.trim()) {
 					const model = patch.model.trim();
-					if (!profile.models.includes(model)) await saveSettings({ profiles: settings.profiles.map((item) => item.id === profileId ? { ...item, models: [...item.models, model] } : item) });
+					if (!profile.models.includes(model)) return respond(req, false, undefined, "请先在设置中为该模型保存 API 配置。");
 					await patchSession(id, { model, profileId, updatedAt: Date.now() });
 				} else if (profileId !== entry.profileId) await patchSession(id, { profileId, model: profile.models[0], updatedAt: Date.now() });
 				if (entry.kind !== "chat") {
@@ -542,12 +544,20 @@ export async function dispatchCommand(req: DesktopTransportRequest): Promise<Des
 				if (!entry) return respond(req, false, undefined, "会话不存在");
 				if (entry.legacy || entry.kind === "chat") return respond(req, true, { sessionId: id, diffs: [], note: "此对话没有文件差异。" });
 				const instances = await ensureEngine();
+				const latestMessageId = args.latestTurn ? (await instances.readMessages(entry.workspaceRoot, id)).findLast((message) => message.role === "user")?.id : undefined;
 				const diffs: FileDiffEntry[] = await instances.readDiffs(
 					entry.workspaceRoot,
 					id,
-					typeof args.messageId === "string" ? args.messageId : undefined,
+					typeof args.messageId === "string" ? args.messageId : latestMessageId,
 				);
 				return respond(req, true, { sessionId: id, diffs });
+			}
+			case "read_workspace_file": {
+				const entry = await getSession(String(args.sessionId || ""));
+				if (!entry || entry.kind === "chat" || entry.legacy) return respond(req, false, undefined, "当前对话不能访问本地文件。");
+				const file = String(args.file || "");
+				if (!file) return respond(req, false, undefined, "请选择文件。");
+				return respond(req, true, await readWorkspaceFile(entry.workspaceRoot, file));
 			}
 
 			/* ---------------- approvals ---------------- */

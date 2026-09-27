@@ -4,7 +4,20 @@ export const TRACE_ROW_HEIGHT = 34;
 
 /** The trace is vertical. Reserve room for its heading and any approval prompts. */
 export function executionCapacity(height: number, approvals = 0): number {
-	return Math.max(1, Math.floor((Math.max(0, height) - 58 - approvals * 68) / TRACE_ROW_HEIGHT));
+	return Math.min(6, Math.max(1, Math.floor((Math.max(0, height) - 90 - approvals * 68) / TRACE_ROW_HEIGHT)));
+}
+
+/** Finished steps move into the horizontal archive; live/approval steps stay in the main trace. */
+export function splitExecutionSteps(messages: ChatMessage[], capacity = 6, protectedIds: string[] = []) {
+	const steps = currentTurnSteps(messages);
+	let excess = Math.max(0, steps.length - Math.min(6, Math.max(1, capacity)));
+	const archived: ChatMessage[] = [];
+	const current: ChatMessage[] = [];
+	for (const step of steps) {
+		if (excess > 0 && !isLiveNode(step) && !protectedIds.includes(step.meta?.toolCallId ?? "")) { archived.push(step); excess--; }
+		else current.push(step);
+	}
+	return { archived, current };
 }
 
 /** Never replay a previous turn's tool nodes in the live trace. */
@@ -51,10 +64,55 @@ export function executionDescription(message: ChatMessage): string {
 		const record = input as Record<string, unknown>;
 		for (const key of ["description", "filePath", "path", "command", "pattern", "query", "url", "name"]) {
 			const value = record[key];
-			if (typeof value === "string" && value.trim()) return value.replace(/\s+/g, " ").trim().slice(0, 180);
+			if (typeof value === "string" && value.trim()) return `${executionExplanation(message)} · ${value.replace(/\s+/g, " ").trim().slice(0, 180)}`;
 		}
 	}
-	return message.meta?.title?.trim() || "查看执行详情";
+	return message.meta?.title?.trim() ? `${executionExplanation(message)} · ${message.meta.title.trim()}` : executionExplanation(message);
+}
+
+export function executionExplanation(message: ChatMessage): string {
+	const name = message.meta?.toolName?.toLowerCase() ?? "";
+	if (message.meta?.messageKind === "reasoning") return "分析问题与下一步行动";
+	if (/^read$/.test(name)) return "阅读文件内容";
+	if (/edit|patch/.test(name)) return "修改文件代码";
+	if (/write/.test(name)) return "写入文件内容";
+	if (/bash|dash|shell|command/.test(name)) return "执行命令或测试";
+	if (/grep|search/.test(name)) return "搜索相关内容";
+	if (/glob|list/.test(name)) return "查找项目文件";
+	if (/task/.test(name)) return "处理子任务";
+	if (/skill/.test(name)) return "加载所选技能";
+	if (/todo/.test(name)) return "更新任务计划";
+	if (/web|fetch/.test(name)) return "获取网页内容";
+	if (/question/.test(name)) return "等待用户补充信息";
+	return "处理当前步骤";
+}
+
+export function executionMetrics(message: ChatMessage): { readLines?: number; additions?: number; deletions?: number } {
+	if (message.meta?.phase !== "success" || executionFailed(executionPayload(message))) return {};
+	const name = message.meta?.toolName ?? "";
+	const meta = message.meta?.toolMetadata ?? {};
+	const payload = executionPayload(message);
+	const output = message.meta?.toolOutput || (typeof payload.output === "string" ? payload.output : "");
+	if (/^read$/i.test(name)) {
+		if (typeof meta.linesRead === "number") return { readLines: meta.linesRead };
+		const numbered = output.split("\n").filter((line) => /^\s*\d+\s*[:|]/.test(line));
+		if (numbered.length) return { readLines: numbered.length };
+		const body = output.match(/<(?:content|file)>\n?([\s\S]*?)<\/(?:content|file)>/i)?.[1];
+		if (body !== undefined) return { readLines: body.trimEnd() ? body.trimEnd().split("\n").length : 0 };
+		return {};
+	}
+	if (/edit|write|patch/i.test(name)) {
+		const diff = meta.filediff as Record<string, unknown> | undefined;
+		if (typeof diff?.additions === "number" && typeof diff.deletions === "number") return { additions: diff.additions, deletions: diff.deletions };
+		const patch = typeof meta.diff === "string" ? meta.diff : typeof diff?.patch === "string" ? diff.patch : undefined;
+		if (patch) return { additions: patch.split("\n").filter((line) => line.startsWith("+") && !line.startsWith("+++")).length, deletions: patch.split("\n").filter((line) => line.startsWith("-") && !line.startsWith("---")).length };
+	}
+	return {};
+}
+
+export function formatDuration(ms: number): string {
+	const seconds = Math.max(0, Math.floor(ms / 1000));
+	return seconds < 60 ? `${seconds}秒` : seconds < 3600 ? `${Math.floor(seconds / 60)}分${seconds % 60}秒` : `${Math.floor(seconds / 3600)}小时${Math.floor(seconds % 3600 / 60)}分`;
 }
 
 export function executionPayload(message: ChatMessage): { input?: unknown; result?: unknown; output?: unknown; error?: string; exitCode?: number; isError?: boolean } {

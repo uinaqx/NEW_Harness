@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ChatMessage } from "./chat-schema";
-import { currentTurnSteps, executionCapacity, executionDescription, pruneExecutionMessages } from "./execution-window";
+import { currentTurnSteps, executionCapacity, executionDescription, executionMetrics, formatDuration, pruneExecutionMessages, splitExecutionSteps } from "./execution-window";
 
 const user = (id: string): ChatMessage => ({ id, sessionId: "s", role: "user", content: id, createdAt: 1 });
 const tool = (id: string, phase: "success" | "running" = "success", input: unknown = { path: `${id}.ts` }): ChatMessage => ({
@@ -28,7 +28,40 @@ describe("live execution trace", () => {
 	});
 
 	test("uses actual tool input for the one-line explanation", () => {
-		expect(executionDescription(tool("x", "success", { command: "bun  test\n--watch" }))).toBe("bun test --watch");
-		expect(executionDescription(tool("x", "success", {}))).toBe("查看执行详情");
+		expect(executionDescription(tool("x", "success", { command: "bun  test\n--watch" }))).toBe("阅读文件内容 · bun test --watch");
+		expect(executionDescription(tool("x", "success", {}))).toBe("阅读文件内容");
+	});
+
+	test("retains every overflow step in chronological archive while keeping six recent rows", () => {
+		const messages = [user("prompt"), ...Array.from({ length: 10 }, (_, index) => tool(String(index)))];
+		const split = splitExecutionSteps(messages, 6);
+		expect(split.archived.map((step) => step.id)).toEqual(["0", "1", "2", "3"]);
+		expect(split.current).toHaveLength(6);
+		expect(split.archived.length + split.current.length).toBe(10);
+	});
+
+	test("archive never takes running or authorization steps", () => {
+		const messages = [user("prompt"), tool("running", "running"), tool("approval"), tool("done")];
+		const split = splitExecutionSteps(messages, 1, ["approval"]);
+		expect(split.current.map((step) => step.id)).toEqual(["running", "approval"]);
+		expect(split.archived.map((step) => step.id)).toEqual(["done"]);
+	});
+
+	test("read counts actual numbered output and never guesses from a requested limit", () => {
+		const read = tool("read", "success", { limit: 2000 });
+		expect(executionMetrics({ ...read, meta: { ...read.meta, toolOutput: "<content>\n1: one\n2: two\n</content>" } }).readLines).toBe(2);
+		expect(executionMetrics(read).readLines).toBeUndefined();
+	});
+
+	test("edit counts use engine diff metadata, and failed edits show no applied changes", () => {
+		const edit = { ...tool("edit"), meta: { ...tool("edit").meta, toolName: "edit", toolMetadata: { filediff: { additions: 49, deletions: 0 } } } };
+		expect(executionMetrics(edit)).toEqual({ additions: 49, deletions: 0 });
+		expect(executionMetrics({ ...edit, content: '{"error":"denied"}' })).toEqual({});
+	});
+
+	test("unified diff counts exclude the header", () => {
+		const edit = { ...tool("edit"), meta: { ...tool("edit").meta, toolName: "edit", toolMetadata: { diff: "--- a\n+++ b\n-old\n+new\n+second" } } };
+		expect(executionMetrics(edit)).toEqual({ additions: 2, deletions: 1 });
+		expect(formatDuration(123000)).toBe("2分3秒");
 	});
 });

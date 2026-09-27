@@ -119,7 +119,7 @@ export async function saveSettings(patch: Partial<AppSettings>): Promise<AppSett
 				...item,
 				protocol: patch.protocol ?? item.protocol,
 				baseUrl: patch.baseUrl ?? item.baseUrl,
-				models: patch.model ? [patch.model, ...item.models.filter((model) => model !== patch.model)] : item.models,
+				models: patch.model ? [patch.model] : item.models,
 			} : item),
 		};
 	}

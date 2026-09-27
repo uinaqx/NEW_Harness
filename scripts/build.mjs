@@ -28,7 +28,8 @@ const BACKEND_DIR = join(ROOT, "backend");
 const WEBVIEW_DIR = join(ROOT, "webview");
 const SHELL_DIR = join(ROOT, "shell");
 const TAURI_DIR = join(SHELL_DIR, "src-tauri");
-const DELIVERY = join(ROOT, "delivery", "0.5.0");
+const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+const DELIVERY = join(ROOT, "delivery", pkg.version);
 const PRODUCT_NAME = "某科学的Agent";
 const SKIP_SHELL = process.argv.includes("--skip-shell");
 /** Jump straight to the installer (useful while iterating on the Rust shell). */
@@ -36,7 +37,6 @@ const ONLY_SHELL = process.argv.includes("--only-shell");
 /** Repack the existing installer with fresh docs + digests; compiles nothing. */
 const DELIVERY_ONLY = process.argv.includes("--delivery-only");
 
-const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 const APP_VERSION = pkg.version;
 
 function log(step, message) {

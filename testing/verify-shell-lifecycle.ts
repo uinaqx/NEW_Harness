@@ -192,10 +192,18 @@ async function main() {
 	);
 
 	const backendOutput = join(dataDir, "logs", "backend.log");
-	const backendLog = await readFile(backendOutput, "utf8").catch(() => "");
+	let backendLog = "";
+	const readinessDeadline = Date.now() + 60_000;
+	// Process creation is earlier than HTTP readiness and the final startup log.
+	// Wait for the seeded-credential engine to actually finish starting.
+	while (Date.now() < readinessDeadline) {
+		backendLog = await readFile(backendOutput, "utf8").catch(() => "");
+		if (backendLog.includes("engine    : running")) break;
+		await Bun.sleep(250);
+	}
 	assert(
 		"startup: backend log records that the engine reached running state",
-		backendLog.includes("engine    : running") || backendLog.includes("engine    : not started"),
+		backendLog.includes("engine    : running"),
 		backendLog.split("\n").filter(Boolean).slice(-8),
 	);
 	const stagedSkills = join(dataDir, "opencode", "config", "opencode", "skills");

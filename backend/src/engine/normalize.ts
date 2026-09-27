@@ -49,6 +49,8 @@ export type NormalizedEvent =
 			error?: string;
 			durationMs?: number;
 			exitCode?: number;
+			title?: string;
+			metadata?: Record<string, unknown>;
 	  }
 	| { kind: "usage"; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cost?: number }
 	| { kind: "approval"; item: ToolApprovalRequestItem }
@@ -112,8 +114,8 @@ export class EventNormalizer {
 	private tools = new Map<string, ToolNodeSnapshot>();
 	/** callID -> tool name seen on the tool part (permissions reference callID). */
 	private toolNames = new Map<string, string>();
-	/** assistant messageID -> whether usage was already reported. */
-	private usageReported = new Set<string>();
+	/** Highest cumulative usage seen per assistant message; updates emit only the delta. */
+	private usageReported = new Map<string, { input: number; output: number; cache: number; cost: number }>();
 	/** requestIDs we have already surfaced an approval for. */
 	private seenPermissions = new Set<string>();
 	private changedFiles = new Set<string>();
@@ -161,15 +163,18 @@ export class EventNormalizer {
 						});
 					}
 					const tokens = info.tokens as Record<string, unknown> | undefined;
-					if (tokens && !this.usageReported.has(messageId)) {
-						this.usageReported.add(messageId);
+					if (tokens) {
 						const cache = (tokens.cache ?? {}) as Record<string, unknown>;
-						out.push({
+						const totals = { input: Number(tokens.input ?? 0), output: Number(tokens.output ?? 0), cache: Number(cache.read ?? 0), cost: Number(info.cost ?? 0) };
+						const previous = this.usageReported.get(messageId) ?? { input: 0, output: 0, cache: 0, cost: 0 };
+						const delta = { input: Math.max(0, totals.input - previous.input), output: Math.max(0, totals.output - previous.output), cache: Math.max(0, totals.cache - previous.cache), cost: Math.max(0, totals.cost - previous.cost) };
+						this.usageReported.set(messageId, { input: Math.max(previous.input, totals.input), output: Math.max(previous.output, totals.output), cache: Math.max(previous.cache, totals.cache), cost: Math.max(previous.cost, totals.cost) });
+						if (delta.input || delta.output || delta.cache || delta.cost) out.push({
 							kind: "usage",
-							inputTokens: Number(tokens.input ?? 0) || undefined,
-							outputTokens: Number(tokens.output ?? 0) || undefined,
-							cacheReadTokens: Number(cache.read ?? 0) || undefined,
-							cost: typeof info.cost === "number" ? info.cost : undefined,
+							inputTokens: delta.input,
+							outputTokens: delta.output,
+							cacheReadTokens: delta.cache,
+							cost: delta.cost,
 						});
 					}
 				}
@@ -364,6 +369,8 @@ export class EventNormalizer {
 					error: failureReason,
 					durationMs: endedAt && next.startedAt ? endedAt - next.startedAt : undefined,
 					exitCode,
+					title: next.title,
+					metadata: next.metadata,
 				});
 			}
 		} else if (status === "error") {
@@ -377,6 +384,8 @@ export class EventNormalizer {
 					error: next.error ?? "tool failed",
 					durationMs: endedAt && next.startedAt ? endedAt - next.startedAt : undefined,
 					exitCode,
+					title: next.title,
+					metadata: next.metadata,
 				});
 			}
 		}

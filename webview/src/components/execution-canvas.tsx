@@ -1,20 +1,24 @@
-import { Check, Circle, Loader2, Terminal, X, FileText, Search, Pencil, ShieldQuestion } from "lucide-react";
+import { Brain, Check, Circle, Loader2, Terminal, X, FileText, Search, Pencil, ShieldQuestion } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage, ChatSessionStatus } from "@/lib/chat-schema";
-import { currentTurnSteps, executionCapacity, executionDescription, executionOutcome, executionPayload, executionFailed } from "@/lib/execution-window";
+import { currentTurnSteps, executionCapacity, executionDescription, executionExplanation, executionMetrics, executionOutcome, executionPayload, executionFailed, formatDuration, splitExecutionSteps } from "@/lib/execution-window";
 import type { ToolApprovalRequestItem } from "@/hooks/chat-session/types";
 
 const COLLAPSE_HOLD_MS = 1200;
 /** Hold time plus the CSS transition length (300ms) before the track is cleared. */
 const CLEAR_AFTER_MS = COLLAPSE_HOLD_MS + 300;
 
+function StepMetrics({ step }: { step: ChatMessage }) {
+	const metrics = executionMetrics(step);
+	return <>{metrics.readLines !== undefined && <span className="read-lines">读取 {metrics.readLines} 行</span>}{metrics.additions !== undefined && <span className="code-stat"><b className="code-add">+{metrics.additions}</b><b className="code-delete">−{metrics.deletions ?? 0}</b></span>}</>;
+}
+
 export function ExecutionCanvas({
 	messages,
 	status,
 	sessionId,
 	approvals,
-	onCapacity,
-	onClear,
+	startedAt,
 	onApprove,
 	onReject,
 }: {
@@ -22,20 +26,25 @@ export function ExecutionCanvas({
 	status: ChatSessionStatus;
 	sessionId: string | null;
 	approvals: ToolApprovalRequestItem[];
-	onCapacity: (capacity: number) => void;
-	onClear: () => void;
+	startedAt: number | null;
 	onApprove: (requestId: string) => void;
 	onReject: (requestId: string) => void;
 }) {
 	const root = useRef<HTMLDivElement>(null);
+	const archiveTrack = useRef<HTMLDivElement>(null);
+	const currentTrack = useRef<HTMLDivElement>(null);
 	const [maxHeight, setMaxHeight] = useState<number>();
 	const [open, setOpen] = useState(false);
 	const [selected, setSelected] = useState<string | null>(null);
 	const [now, setNow] = useState(Date.now());
+	const [capacity, setCapacity] = useState(6);
 	const busy = ["starting", "running", "stopping"].includes(status) || approvals.length > 0;
 	const steps = currentTurnSteps(messages);
+	const { archived, current } = splitExecutionSteps(messages, capacity, approvals.map((item) => item.toolCallId));
 	const detail = steps.find((message) => message.id === selected);
 	const detailApproval = approvals.find((item) => item.toolCallId === detail?.meta?.toolCallId);
+	useEffect(() => { if (archiveTrack.current) archiveTrack.current.scrollLeft = archiveTrack.current.scrollWidth; }, [archived.length]);
+	useEffect(() => { if (currentTrack.current) currentTrack.current.scrollTop = currentTrack.current.scrollHeight; }, [steps.length]);
 
 	// A new session starts with an empty canvas: history is not replayed.
 	useEffect(() => {
@@ -50,14 +59,13 @@ export function ExecutionCanvas({
 		}
 		const collapse = setTimeout(() => setOpen(false), COLLAPSE_HOLD_MS);
 		const clear = setTimeout(() => {
-			onClear();
 			setSelected(null);
 		}, CLEAR_AFTER_MS);
 		return () => {
 			clearTimeout(collapse);
 			clearTimeout(clear);
 		};
-	}, [busy, onClear, sessionId]);
+	}, [busy, sessionId]);
 
 	// Close the detail panel when its node was evicted by the height budget.
 	useEffect(() => {
@@ -69,12 +77,12 @@ export function ExecutionCanvas({
 		const observer = new ResizeObserver(() => {
 			const height = (root.current?.closest("main")?.getBoundingClientRect().height ?? window.innerHeight) * 0.4;
 			setMaxHeight(height);
-			onCapacity(executionCapacity(height, approvals.length));
+			setCapacity(executionCapacity(height, approvals.length));
 		});
 		observer.observe(root.current);
 		if (root.current.closest("main")) observer.observe(root.current.closest("main")!);
 		return () => observer.disconnect();
-	}, [onCapacity, approvals.length]);
+	}, [approvals.length]);
 
 	useEffect(() => {
 		if (!busy) return;
@@ -89,16 +97,22 @@ export function ExecutionCanvas({
 					<span>
 						<Circle size={7} fill="currentColor" /> {busy ? "正在执行" : status === "completed" ? "执行完成" : "执行已结束"}
 					</span>
-					<span>实时步骤 · {steps.length}</span>
+					<span>{startedAt && busy ? `已持续 ${formatDuration(now - startedAt)} · ` : ""}流程 {steps.length}</span>
 				</header>
-				<div className="harness-trace-track" role="list" aria-label="本轮执行步骤">
+				{archived.length > 0 && <div ref={archiveTrack} className="harness-trace-archive" aria-label="较早的已结束流程">
+					{archived.map((step) => <button key={step.id} type="button" aria-expanded={selected === step.id} onClick={() => setSelected(selected === step.id ? null : step.id)} title={executionDescription(step)}>
+						<span className="archive-number">{String(steps.findIndex((item) => item.id === step.id) + 1).padStart(2, "0")}</span><span>{step.meta?.toolName ?? "工具"}</span><small>{executionExplanation(step)}</small><StepMetrics step={step} />
+					</button>)}
+				</div>}
+				<div ref={currentTrack} className="harness-trace-track" role="list" aria-label="本轮执行步骤">
 					{steps.length === 0 ? (
 						<div className="harness-wait">
 							<Loader2 size={14} className="animate-spin" />
 							正在连接模型，等待下一步
 						</div>
 					) : (
-						steps.map((step, index) => {
+						current.map((step) => {
+							const index = steps.findIndex((item) => item.id === step.id);
 							const payload = executionPayload(step);
 							const approval = approvals.find((item) => item.toolCallId === step.meta?.toolCallId);
 							const live = step.meta?.phase === "running" || step.meta?.phase === "pending" || step.meta?.hookEventName === "tool_call_start";
@@ -106,7 +120,7 @@ export function ExecutionCanvas({
 							const interrupted = !busy && live;
 							const failed = executionFailed(payload) || interrupted;
 							const name = step.meta?.toolName ?? "工具";
-							const Icon = /read|file/i.test(name) ? FileText : /search|grep|list/i.test(name) ? Search : /write|edit|patch/i.test(name) ? Pencil : Terminal;
+							const Icon = step.meta?.messageKind === "reasoning" ? Brain : /read|file/i.test(name) ? FileText : /search|grep|list/i.test(name) ? Search : /write|edit|patch/i.test(name) ? Pencil : Terminal;
 							const State = approval ? ShieldQuestion : running ? Loader2 : failed ? X : Check;
 							const label = executionOutcome(step, running, interrupted, !!approval);
 							const timing = running
@@ -130,7 +144,10 @@ export function ExecutionCanvas({
 										<Icon className="harness-trace-icon" size={13} aria-hidden="true" />
 										<strong className="harness-trace-name">{name}</strong>
 										<span className="harness-trace-description"><span>{executionDescription(step)}</span></span>
-										<span className="harness-trace-status"><State size={12} className={running && !approval ? "animate-spin" : ""} aria-hidden="true" />{label}{timing ? ` · ${timing}` : ""}</span>
+										<span className="harness-trace-status">
+											<StepMetrics step={step} />
+											<State size={12} className={running && !approval ? "animate-spin" : ""} aria-hidden="true" />{label}{timing ? ` · ${timing}` : ""}
+										</span>
 										<span className="harness-trace-merge" aria-hidden="true" />
 									</button>
 								</div>

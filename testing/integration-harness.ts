@@ -15,6 +15,8 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startMockProvider } from "./mock-provider";
+import { executionMetrics } from "../webview/src/lib/execution-window";
+import type { ChatMessage } from "../shared/types";
 
 const BACKEND = join(import.meta.dir, "..", "backend", "src", "index.ts");
 const OPENCODE_BIN = join(import.meta.dir, "..", "vendor", "opencode", "bin", "opencode.exe");
@@ -431,11 +433,8 @@ async function main() {
 			turn1.chunks.filter((c) => c.stream === "chat_text").length >= 1,
 			turn1.chunks.filter((c) => c.stream === "chat_text").length,
 		);
-		assert(
-			"canvas: usage reported",
-			turn1.chunks.some((c) => c.stream === "chat_usage"),
-			turn1.chunks.filter((c) => c.stream === "chat_usage").length,
-		);
+		const usageTotals = turn1.chunks.filter((chunk) => chunk.stream === "chat_usage").map((chunk) => JSON.parse(chunk.chunk)).reduce((total, item) => ({ input: total.input + (item.inputTokens ?? 0), output: total.output + (item.outputTokens ?? 0) }), { input: 0, output: 0 });
+		assert("canvas: actual token usage totals include both model calls once", usageTotals.input === 22 && usageTotals.output === 10, usageTotals);
 
 		const turn2 = await runPrompt("跑个命令", "reject", true);
 		const toolEnd = turn2.chunks.filter((c) => c.stream === "chat_tool_call_end");
@@ -448,6 +447,18 @@ async function main() {
 
 		const turn3 = await runPrompt("改文件", "allow", true);
 		assert("approval: an edit in the same session still asks and can be allowed", turn3.approvals.length === 1, turn3.approvals);
+		const metricFor = (chunk: string) => {
+			const payload = JSON.parse(chunk);
+			const message: ChatMessage = { id: "metric", sessionId, role: "tool", content: chunk, createdAt: 1, meta: { toolName: payload.toolName, phase: "success", toolOutput: payload.output, toolMetadata: payload.metadata } };
+			return executionMetrics(message);
+		};
+		const editedMetrics = turn3.chunks.filter((chunk) => chunk.stream === "chat_tool_call_end").map((chunk) => metricFor(chunk.chunk));
+		assert("canvas: real edit metadata supplies added and deleted line counts", editedMetrics.some((metric) => metric.additions !== undefined && metric.deletions !== undefined), editedMetrics);
+		const editDiffs = await client.invoke<{ diffs: Array<{ file: string; additions: number; deletions: number }> }>("list_session_diffs", { sessionId, latestTurn: true });
+		assert("diff: completed edit result contains its changed file and line counts", editDiffs.diffs.some((diff) => diff.file === "README.md" && diff.additions === 1 && diff.deletions === 1) && !editDiffs.diffs.some((diff) => diff.file === "PHASE1.txt"), editDiffs.diffs);
+		const readTurn = await runPrompt("读文件", "allow", false);
+		const readMetrics = readTurn.chunks.filter((chunk) => chunk.stream === "chat_tool_call_end").map((chunk) => metricFor(chunk.chunk));
+		assert("canvas: real read output supplies the number of lines read", readMetrics.some((metric) => (metric.readLines ?? 0) > 0), readMetrics);
 
 		/* --- changing settings between turns ---------------------------------- */
 		// Turning command auto-approval on must not interrupt anything, and must be
@@ -483,7 +494,10 @@ async function main() {
 			? skillRequest.tools.map((item: { function?: { name?: string } }) => item.function?.name ?? "")
 			: Object.keys((skillRequest?.tools ?? {}) as Record<string, unknown>);
 		assert("skills: OpenCode advertises the native skill tool and bundled skill", toolNames.includes("skill") && skillMessages.includes("<name>systematic-debugging</name>"), { toolNames, listed: skillMessages.includes("<name>systematic-debugging</name>") });
-		const secondChat = await client.invoke<{ session: { id: string } }>("create_session", { workspaceRoot: workspace, model: "mock-model-alt" });
+		const alternateProfile = await client.invoke<{ profileId: string }>("save_model_profile", { name: "替代模型", protocol: "openai-compatible", baseUrl: `${mock.url}/v1`, models: ["mock-model-alt"], apiKey: TEST_KEY });
+		const unconfiguredRejected = await client.invoke("create_session", { workspaceRoot: workspace, model: "not-saved" }).then(() => false).catch(() => true);
+		assert("models: a conversation cannot silently append an unconfigured model", unconfiguredRejected, unconfiguredRejected);
+		const secondChat = await client.invoke<{ session: { id: string } }>("create_session", { workspaceRoot: workspace, profileId: alternateProfile.profileId, model: "mock-model-alt" });
 		const siblingSessions = await client.invoke<{ sessions: Array<{ workspaceRoot: string }> }>("list_sessions");
 		assert("projects: one folder supports multiple conversations", siblingSessions.sessions.filter((item) => item.workspaceRoot === workspace).length >= 2, siblingSessions.sessions.map((item) => item.workspaceRoot));
 		const siblingCursor = client.events.length;
@@ -498,12 +512,14 @@ async function main() {
 			profileId: "", protocol: "openai-compatible", baseUrl: `${mock.url}/v1`, model: "mock-model-third",
 		});
 		assert("profiles: a new API cannot borrow the default profile's saved key", !unsavedProfileTest.ok && unsavedProfileTest.kind === "auth", unsavedProfileTest);
+		const multipleModelsRejected = await client.invoke("save_model_profile", { name: "多模型拒绝", protocol: "openai-compatible", baseUrl: `${mock.url}/v1`, models: ["one", "two"] }).then(() => false).catch(() => true);
+		assert("profiles: one API accepts exactly one model", multipleModelsRejected, multipleModelsRejected);
 		const profileSaved = await client.invoke<{ profileId: string }>("save_model_profile", {
-			name: "第二接口", protocol: "openai-compatible", baseUrl: `${mock.url}/v1`, models: "mock-model-third\nmock-model-fourth", apiKey: TEST_KEY,
+			name: "第二接口", protocol: "openai-compatible", baseUrl: `${mock.url}/v1`, models: "mock-model-third", apiKey: TEST_KEY,
 		});
 		const profileId = profileSaved.profileId;
 		const profileSettings = await client.invoke<{ settings: { profiles: Array<{ id: string; models: string[]; hasApiKey: boolean }> } }>("get_model_settings");
-		assert("profiles: multiple named APIs and models are available without exposing keys", profileSettings.settings.profiles.length === 2 && profileSettings.settings.profiles.some((item) => item.id === profileId && item.hasApiKey && item.models.length === 2), profileSettings.settings.profiles);
+		assert("profiles: multiple APIs each expose their configured model without keys", profileSettings.settings.profiles.length === 3 && profileSettings.settings.profiles.every((item) => item.models.length === 1) && profileSettings.settings.profiles.some((item) => item.id === profileId && item.hasApiKey), profileSettings.settings.profiles);
 		const chatCreated = await client.invoke<{ session: { id: string; config: { kind: string; enableTools: boolean; workspaceRoot: string } } }>("create_session", { kind: "chat", profileId, model: "mock-model-third" });
 		const chatId = chatCreated.session.id;
 		assert("chat: session needs no project directory and tools are disabled", chatCreated.session.config.kind === "chat" && chatCreated.session.config.enableTools === false && !chatCreated.session.config.workspaceRoot.startsWith(workspace), chatCreated.session.config);
@@ -526,6 +542,8 @@ async function main() {
 		assert("chat: backend refuses tool approvals", blockedApproval, blockedApproval);
 		const blockedPlan = await client.invoke("update_session_config", { sessionId: chatId, config: { mode: "plan" } }).then(() => false).catch(() => true);
 		assert("chat: plan/tool mode cannot be enabled", blockedPlan, blockedPlan);
+		const blockedPreview = await client.invoke("read_workspace_file", { sessionId: chatId, file: "README.md" }).then(() => false).catch(() => true);
+		assert("chat: local file preview is refused", blockedPreview, blockedPreview);
 		const chatList = await client.invoke<{ sessions: Array<{ id: string; kind: string }> }>("list_sessions");
 		assert("chat: navigation retains its own session kind", chatList.sessions.some((item) => item.id === chatId && item.kind === "chat"), chatList.sessions.filter((item) => item.id === chatId));
 
@@ -542,6 +560,14 @@ async function main() {
 		const roles = transcript.messages.map((m) => String(m.role));
 		assert("history: user and assistant messages are reconstructed", roles.includes("user") && roles.includes("assistant"), roles);
 		assert("history: tool output is summarised, not dumped", roles.includes("status") && !roles.includes("tool"), roles);
+		const preview = await client.invoke<{ content: string }>("read_workspace_file", { sessionId, file: "README.md" });
+		assert("files: clicking a project path can read its current text", preview.content.length > 0, preview.content.slice(0, 80));
+		const blockedOutside = await client.invoke("read_workspace_file", { sessionId, file: join(dataDir, "app-settings.json") }).then(() => false).catch(() => true);
+		assert("files: preview refuses paths outside the project", blockedOutside, blockedOutside);
+		const lastUser = transcript.messages.findLast((message) => message.role === "user");
+		const latestDiffs = await client.invoke<{ diffs: unknown[] }>("list_session_diffs", { sessionId, latestTurn: true });
+		const explicitDiffs = await client.invoke<{ diffs: unknown[] }>("list_session_diffs", { sessionId, messageId: lastUser?.id });
+		assert("diff: task result uses the latest user turn, not the session aggregate", JSON.stringify(latestDiffs.diffs) === JSON.stringify(explicitDiffs.diffs), latestDiffs.diffs);
 
 		/* --- cancel + delete rules --------------------------------------------- */
 		const nodes = await client.invoke<{ nodes: Array<Record<string, unknown>> }>("read_session_nodes", { sessionId });

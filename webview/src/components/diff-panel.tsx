@@ -9,6 +9,7 @@ interface Props {
 	loading: boolean;
 	onClose: () => void;
 	onRefresh: () => void;
+	onOpenFile: (file: string) => void;
 }
 
 /** Colourises a unified diff without adding a diff library. */
@@ -40,7 +41,7 @@ function statusIcon(status: FileDiffEntryPayload["status"]) {
 	return <FileCode2 size={13} />;
 }
 
-export function DiffPanel({ open, diffs, stale, loading, onClose, onRefresh }: Props) {
+export function DiffPanel({ open, diffs, stale, loading, onClose, onRefresh, onOpenFile }: Props) {
 	const [selected, setSelected] = useState<string | null>(null);
 	const active = useMemo(() => diffs.find((diff) => diff.file === selected) ?? diffs[0], [diffs, selected]);
 
@@ -80,7 +81,7 @@ export function DiffPanel({ open, diffs, stale, loading, onClose, onRefresh }: P
 						))}
 					</ul>
 					<div className="diff-detail">
-						<div className="diff-path">{active?.file}</div>
+						<div className="diff-path"><button type="button" onClick={() => active && onOpenFile(active.file)} title="打开文件预览">{active?.file}</button></div>
 						<div className="diff-status">状态：{active?.status ?? "未知"}</div>
 						{active?.patch ? <DiffBody patch={active.patch} /> : <div className="diff-empty">{active?.unavailable ?? "无文本差异可展示。"}</div>}
 					</div>

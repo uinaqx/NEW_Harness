@@ -46,15 +46,16 @@
 .diff-files button[data-active="true"] { background: var(--sidebar-accent); }
 .diff-files .diff-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .diff-files .diff-stat { font-size: 10px; color: var(--muted-foreground); display: flex; gap: 4px; }
-.diff-files .diff-stat .del { color: var(--muted-foreground); }
+.diff-files .diff-stat .add { color: var(--code-add); }
+.diff-files .diff-stat .del { color: var(--code-delete); }
 .diff-detail { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
 .diff-path { padding: 8px 12px 0; font-size: 11px; overflow-wrap: anywhere; }
 .diff-status { padding: 2px 12px 8px; font-size: 10px; color: var(--muted-foreground); }
 .diff-body { flex: 1; margin: 0; overflow: auto; font-family: "Geist Mono", "SF Mono", Consolas, monospace; font-size: 11.5px; line-height: 1.55; padding: 8px 0 16px; }
 .diff-line { display: flex; gap: 8px; padding: 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .diff-gutter { width: 10px; flex-shrink: 0; opacity: .6; }
-.diff-add { background: var(--surface-hover); }
-.diff-del { background: var(--card); opacity: .7; }
+.diff-add { background: color-mix(in srgb, var(--code-add) 9%, transparent); }
+.diff-del { background: color-mix(in srgb, var(--code-delete) 9%, transparent); }
 .diff-hunk { color: var(--muted-foreground); }
 .diff-meta { color: var(--muted-foreground); opacity: .8; }
 
@@ -90,3 +91,29 @@
 .dialog .test-ok pre, .dialog .test-bad pre { margin: 0; max-height: 140px; overflow: auto; font-size: 11px; white-space: pre-wrap; color: var(--muted-foreground); }
 .dialog .test-kind { font-size: 10px; color: var(--muted-foreground); }
 .dialog-actions { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+
+.settings-workspace-picker { display: flex; gap: 8px; }
+.settings-workspace-picker button { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border: 1px solid var(--input); border-radius: 8px; font-size: 12px; }
+.settings-workspace-picker button:first-child { flex: 1; min-width: 0; text-align: left; }
+.settings-workspace-picker span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.settings-workspace-picker button:hover { background: var(--surface-hover); }
+.task-result { margin: 18px 0 8px 36px; }
+.task-telemetry { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; color: var(--muted-foreground); font-size: 11px; font-variant-numeric: tabular-nums; padding: 10px 0; }
+.telemetry-separator { opacity: .55; }
+.task-changes { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 8px; background: var(--card); }
+.task-changes > header { display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+.task-changes header > div { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.task-changes header strong { font-size: 13px; font-weight: 600; }
+.task-changes header button { border: 1px solid var(--border); border-radius: 7px; padding: 6px 10px; font-size: 11px; }
+.task-file-list > button { display: flex; align-items: center; gap: 16px; width: 100%; text-align: left; padding: 11px 18px; font-size: 12px; }
+.task-file-list > button > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-file-list > button:hover { background: var(--surface-hover); }
+.task-show-files { width: 100%; display: flex; align-items: center; justify-content: flex-start; gap: 7px; border-top: 1px solid var(--border); padding: 10px 18px; font-size: 11px; color: var(--muted-foreground); }
+.file-viewer { position: absolute; top: var(--window-title-bar-height); right: 0; bottom: 0; width: min(760px, 70%); display: flex; flex-direction: column; background: var(--background); border-left: 1px solid var(--border); z-index: 45; box-shadow: -12px 0 32px var(--harness-glow); }
+.file-viewer header { display: flex; align-items: center; gap: 9px; padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.file-viewer header strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.file-viewer-message { display: flex; align-items: center; gap: 8px; padding: 8px 16px; font-size: 12px; color: var(--muted-foreground); }
+.file-viewer-code { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 12px 0; font-size: 11px; line-height: 1.75; font-family: Consolas, monospace; }
+.file-source-line { display: flex; }
+.file-line-number { width: 56px; flex-shrink: 0; padding-right: 14px; text-align: right; color: var(--muted-foreground); user-select: none; }
+.file-source-line code { padding-right: 20px; font: inherit; }

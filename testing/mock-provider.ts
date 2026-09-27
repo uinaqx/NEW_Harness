@@ -226,6 +226,7 @@ export function startMockProvider(options: MockProviderOptions = {}): MockProvid
 				}
 				chunks.push(sseChunk({ ...base(id, model), ...delta({}, "stop") }));
 			}
+			chunks.push(sseChunk({ ...base(id, model), choices: [], usage: { prompt_tokens: 11, completion_tokens: toolName ? 3 : 7, total_tokens: toolName ? 14 : 18 } }));
 			chunks.push("data: [DONE]\n\n");
 
 			const stream = new ReadableStream<Uint8Array>({

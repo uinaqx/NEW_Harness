@@ -429,7 +429,7 @@ export class HarnessEngine {
 				continue;
 			}
 			if (role !== "assistant") continue;
-			if (text || reasoning) {
+			if (text || reasoning || info.tokens) {
 				out.push({
 					id: messageId,
 					sessionId,
@@ -442,6 +442,8 @@ export class HarnessEngine {
 						providerId: String(info.providerID ?? ""),
 						inputTokens: Number((info.tokens as Record<string, unknown>)?.input ?? 0) || undefined,
 						outputTokens: Number((info.tokens as Record<string, unknown>)?.output ?? 0) || undefined,
+						cacheReadTokens: Number(((info.tokens as Record<string, unknown>)?.cache as Record<string, unknown>)?.read ?? 0) || undefined,
+						completedAt: Number((info.time as Record<string, unknown>)?.completed ?? 0) || undefined,
 					},
 				});
 			}
@@ -925,6 +927,8 @@ export class HarnessEngine {
 							error: event.error,
 							durationMs: event.durationMs,
 							exitCode: event.exitCode,
+							title: event.title,
+							metadata: event.metadata,
 						}),
 					);
 					break;
@@ -993,6 +997,9 @@ export class HarnessEngine {
 								output: node.output,
 								error: node.error,
 								durationMs: node.startedAt && node.endedAt ? node.endedAt - node.startedAt : undefined,
+								exitCode: node.exitCode,
+								title: node.title,
+								metadata: node.metadata,
 							}),
 						);
 						runtime.normalizer.handle({

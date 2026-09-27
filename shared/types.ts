@@ -52,6 +52,8 @@ export interface ChatMessageMeta {
 	title?: string;
 	/** Node phase mirrored from the engine's tool state machine. */
 	phase?: "pending" | "running" | "success" | "failure" | "cancelled";
+	toolMetadata?: Record<string, unknown>;
+	completedAt?: number;
 }
 
 export interface ChatMessage {
@@ -92,6 +94,7 @@ export interface ChatSummary {
 	toolCalls: number;
 	tokensIn: number;
 	tokensOut: number;
+	cacheReadTokens?: number;
 }
 
 export interface SessionRecord {
@@ -204,6 +207,7 @@ export interface ToolCallEndPayload {
 	exitCode?: number;
 	/** Short human label the engine attached (file path, command, ...). */
 	title?: string;
+	metadata?: Record<string, unknown>;
 }
 export interface ChatUsagePayload {
 	inputTokens?: number;
@@ -290,6 +294,7 @@ export interface ToolNodePayload {
 	startedAt?: number;
 	endedAt?: number;
 	exitCode?: number;
+	metadata?: Record<string, unknown>;
 }
 
 export interface AppInfoPayload {

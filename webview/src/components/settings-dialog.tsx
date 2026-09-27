@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, Loader2, Plus, ShieldCheck, Trash2, X, XCircle } from "lucide-react";
+import { CheckCircle2, FolderOpen, Loader2, Plus, ShieldCheck, Trash2, X, XCircle } from "lucide-react";
 import type { ConnectionTestResult, ModelSettingsPayload, ProviderProtocol } from "@/lib/chat-schema";
 import { DEFAULT_BASE_URLS, DEFAULT_MODELS, PROTOCOL_LABELS } from "@/lib/config";
 import type { SettingsDraft } from "@/hooks/use-chat-session";
@@ -16,7 +16,7 @@ interface Props {
 	onDeleteProfile: (profileId: string) => Promise<void>;
 	onTest: (draft: SettingsDraft) => Promise<ConnectionTestResult>;
 	onValidateWorkspace: (path: string) => Promise<{ valid: boolean; resolved?: string; error?: string }>;
-	onThemeChange: (theme: "dark" | "light") => void;
+	onPickWorkspace: () => Promise<string | null>;
 }
 
 function draftFrom(settings: ModelSettingsPayload | null, lastWorkspace: string, profileId?: string): SettingsDraft {
@@ -27,17 +27,15 @@ function draftFrom(settings: ModelSettingsPayload | null, lastWorkspace: string,
 		protocol: profile?.protocol ?? settings?.protocol ?? "openai-compatible",
 		baseUrl: profile?.baseUrl || settings?.baseUrl || DEFAULT_BASE_URLS["openai-compatible"],
 		model: profile?.models[0] || settings?.model || DEFAULT_MODELS["openai-compatible"],
-		models: profile?.models.join("\n") || settings?.model || DEFAULT_MODELS["openai-compatible"],
 		workspaceRoot: settings?.lastWorkspace || lastWorkspace,
 		// Never prefilled: the key lives only in the OS protected store.
 		apiKey: "",
 		autoApproveEdits: settings?.autoApproveEdits ?? false,
 		autoApproveCommands: settings?.autoApproveCommands ?? false,
-		theme: settings?.theme ?? "dark",
 	};
 }
 
-export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtected, busyCommand, onClose, onSave, onDeleteProfile, onTest, onValidateWorkspace, onThemeChange }: Props) {
+export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtected, busyCommand, onClose, onSave, onDeleteProfile, onTest, onValidateWorkspace, onPickWorkspace }: Props) {
 	const [draft, setDraft] = useState<SettingsDraft>(() => draftFrom(settings, lastWorkspace));
 	const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
 	const [saveState, setSaveState] = useState<{ ok: boolean; message: string } | null>(null);
@@ -65,7 +63,6 @@ export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtecte
 			protocol,
 			baseUrl: DEFAULT_BASE_URLS[protocol],
 			model: DEFAULT_MODELS[protocol],
-			models: DEFAULT_MODELS[protocol],
 		}));
 		setTestResult(null);
 	};
@@ -74,8 +71,8 @@ export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtecte
 	const keyPlaceholder = currentProfile?.hasApiKey ? `已保存 ${currentProfile.apiKeyMask ?? "••••"}（留空表示不修改）` : "sk-...";
 
 	return (
-		<div className="dialog-overlay" onClick={onClose}>
-			<div className="dialog" onClick={(event) => event.stopPropagation()}>
+		<div className="dialog-overlay">
+			<div className="dialog" role="dialog" aria-modal="true" aria-label="API 设置">
 				<div className="dialog-head">
 					<h2>设置</h2>
 					<button onClick={onClose} aria-label="关闭">
@@ -89,20 +86,10 @@ export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtecte
 							<span className="api-profile-status" data-ready={profile.hasApiKey} />
 							<span><strong>{profile.name}</strong><small>{profile.models.join(" · ")}</small></span>
 						</button>)}
-						<button className="api-profile-add" onClick={() => { setSelectedProfileId(""); setDraft({ ...draftFrom(settings, lastWorkspace), profileId: "", profileName: "", apiKey: "", model: "", models: "" }); setTestResult(null); setSaveState(null); }}><Plus size={15} /> 添加 API</button>
+						<button className="api-profile-add" onClick={() => { setSelectedProfileId(""); setDraft({ ...draftFrom(settings, lastWorkspace), profileId: "", profileName: "", apiKey: "", model: "" }); setTestResult(null); setSaveState(null); }}><Plus size={15} /> 添加 API</button>
 					</div>
 				</div>
 				<div className="field"><label>配置名称</label><input value={draft.profileName} onChange={(event) => set("profileName", event.target.value)} placeholder="例如：DeepSeek 工作模型" /></div>
-				<div className="field">
-					<label>外观主题</label>
-					<div className="segmented">
-						{(["dark", "light"] as const).map((theme) => (
-							<button key={theme} className="seg" data-active={draft.theme === theme} onClick={() => { set("theme", theme); onThemeChange(theme); }}>
-								{theme === "dark" ? "深色" : "浅色"}
-							</button>
-						))}
-					</div>
-				</div>
 
 				<div className="field">
 					<label>接口协议</label>
@@ -133,9 +120,9 @@ export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtecte
 
 				<div className="row2">
 					<div className="field">
-						<label>模型 ID（每行一个）</label>
-						<textarea value={draft.models} onChange={(event) => { set("models", event.target.value); set("model", event.target.value.split(/[,\n]/).map((item) => item.trim()).find(Boolean) ?? ""); }} placeholder={DEFAULT_MODELS[draft.protocol]} rows={3} />
-						<div className="hint">保存后可在对话框右下角切换这些模型。</div>
+						<label>模型 ID</label>
+						<input value={draft.model} onChange={(event) => set("model", event.target.value)} placeholder={DEFAULT_MODELS[draft.protocol]} />
+						<div className="hint">每份 API 配置一个模型；可添加多份配置并在对话框切换。</div>
 					</div>
 					<div className="field">
 						<label>API Key {osProtected && <span className="badge-ok"><ShieldCheck size={11} /> 系统保护</span>}</label>
@@ -146,17 +133,18 @@ export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtecte
 
 				<div className="field">
 						<label>Work 默认工作区目录（可留空）</label>
-					<input
-						type="text"
-						value={draft.workspaceRoot}
-						onChange={(event) => set("workspaceRoot", event.target.value)}
-						placeholder="C:\\Users\\you\\project"
-						onBlur={async () => {
-							if (!draft.workspaceRoot.trim()) return;
-							const result = await onValidateWorkspace(draft.workspaceRoot.trim());
-							setWorkspaceState({ valid: result.valid, message: result.valid ? `可用：${result.resolved ?? ""}` : result.error ?? "路径不可用" });
-						}}
-					/>
+					<div className="settings-workspace-picker">
+						<button type="button" onClick={async () => {
+							try {
+								const path = await onPickWorkspace();
+								if (!path) return;
+								const result = await onValidateWorkspace(path);
+								if (result.valid) set("workspaceRoot", result.resolved ?? path);
+								setWorkspaceState({ valid: result.valid, message: result.valid ? "已选择工作区" : result.error ?? "路径不可用" });
+							} catch (error) { setWorkspaceState({ valid: false, message: error instanceof Error ? error.message : String(error) }); }
+						}}><FolderOpen size={16} /><span>{draft.workspaceRoot || "选择文件夹"}</span></button>
+						{draft.workspaceRoot && <button type="button" aria-label="清除默认工作区" onClick={() => { set("workspaceRoot", ""); setWorkspaceState(null); }}><X size={14} /></button>}
+					</div>
 					<div className="hint">
 						项目内读取默认允许；修改文件与执行命令默认询问。工作区是权限边界，不是操作系统级沙箱。
 					</div>
@@ -214,19 +202,16 @@ export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtecte
 						disabled={busyCommand === "test_connection" || !draft.model.trim() || !draft.baseUrl.trim()}
 						onClick={async () => {
 							setTestResult(null);
-							const result = await onTest(draft);
-							setTestResult(result);
+							try { setTestResult(await onTest(draft)); }
+							catch (error) { setSaveState({ ok: false, message: error instanceof Error ? error.message : String(error) }); }
 						}}
 					>
 						{busyCommand === "test_connection" ? <Loader2 size={14} className="spin" /> : null} 测试连接
 					</button>
 					<span className="spacer" style={{ flex: 1 }} />
-					<button className="btn" onClick={onClose}>
-						取消
-					</button>
 					<button
 						className="btn btn-primary"
-						disabled={busyCommand === "save_settings" || !draft.profileName.trim() || !draft.models.trim() || !draft.baseUrl.trim()}
+						disabled={busyCommand === "save_settings" || !draft.profileName.trim() || !draft.model.trim() || !draft.baseUrl.trim()}
 						onClick={async () => {
 							try {
 								const id = await onSave(draft);

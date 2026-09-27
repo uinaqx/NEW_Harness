@@ -46,7 +46,6 @@ function parseJson<T>(text: string): T | undefined {
 export interface SettingsDraft {
 	profileId: string;
 	profileName: string;
-	models: string;
 	protocol: ProviderProtocol;
 	baseUrl: string;
 	model: string;
@@ -54,7 +53,6 @@ export interface SettingsDraft {
 	apiKey: string;
 	autoApproveEdits: boolean;
 	autoApproveCommands: boolean;
-	theme: "dark" | "light";
 }
 
 export function useChatSession() {
@@ -64,6 +62,10 @@ export function useChatSession() {
 	const [config, setConfig] = useState<ChatSessionConfig | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [summary, setSummary] = useState<ChatSummary>(EMPTY_SUMMARY);
+	const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
+	const [runEndedAt, setRunEndedAt] = useState<number | null>(null);
+	const [runOutcome, setRunOutcome] = useState<ChatSessionStatus>("idle");
+	const [hasUsage, setHasUsage] = useState(false);
 	const [approvals, setApprovals] = useState<ToolApprovalRequestItem[]>([]);
 	const [transportState, setTransportState] = useState<DesktopTransportState>("connecting");
 	const [sessions, setSessions] = useState<SessionListItemPayload[]>([]);
@@ -77,8 +79,10 @@ export function useChatSession() {
 	const [busyCommand, setBusyCommand] = useState<string | null>(null);
 	const [backendFailure, setBackendFailure] = useState<string | null>(null);
 	const streamingIdRef = useRef<string | null>(null);
+	const reasoningIdRef = useRef<string | null>(null);
 	const sessionRef = useRef<string | null>(null);
 	const diffsStaleRef = useRef(true);
+	const turnGenerationRef = useRef(0);
 	streamingIdRef.current = streamingId;
 	sessionRef.current = sessionId;
 
@@ -153,14 +157,29 @@ export function useChatSession() {
 	/* ---------------- live chunks ---------------- */
 
 	const handleChunk = useCallback((event: AgentChunkEvent) => {
+		const endReasoning = () => {
+			const id = reasoningIdRef.current;
+			if (!id) return;
+			reasoningIdRef.current = null;
+			setMessages((previous) => previous.map((message) => message.id === id ? { ...message, meta: { ...message.meta, phase: "success", hookEventName: "tool_call_end", durationMs: event.ts - message.createdAt } } : message));
+		};
 		switch (event.stream) {
 			case "chat_queued_prompt_start":
+				reasoningIdRef.current = null;
+				turnGenerationRef.current++;
 				setStatus("starting");
+				setRunOutcome("running");
 				setStreamingId(null);
 				streamingIdRef.current = null;
 				setError(null);
+				setRunStartedAt(event.ts);
+				setRunEndedAt(null);
+				setSummary(EMPTY_SUMMARY);
+				setHasUsage(false);
+				setDiffs([]);
 				break;
 			case "chat_text":
+				endReasoning();
 				setMessages((previous) => {
 					const id = streamingIdRef.current;
 					if (id) return previous.map((message) => (message.id === id ? { ...message, content: message.content + event.chunk } : message));
@@ -173,20 +192,16 @@ export function useChatSession() {
 			case "chat_reasoning": {
 				const parsed = parseJson<{ text?: string }>(event.chunk);
 				if (!parsed?.text) break;
+				const id = reasoningIdRef.current ?? makeId("reasoning");
+				reasoningIdRef.current = id;
 				setMessages((previous) => {
-					const id = streamingIdRef.current;
-					if (id) return previous.map((message) => (message.id === id ? { ...message, reasoning: (message.reasoning ?? "") + parsed.text } : message));
-					const newId = makeId("msg");
-					streamingIdRef.current = newId;
-					setStreamingId(newId);
-					return [
-						...previous,
-						{ id: newId, sessionId: event.sessionId, role: "assistant" as const, content: "", reasoning: parsed.text, createdAt: event.ts },
-					];
+					if (previous.some((message) => message.id === id)) return previous.map((message) => message.id === id ? { ...message, meta: { ...message.meta, toolOutput: (message.meta?.toolOutput ?? "") + parsed.text } } : message);
+					return [...previous, { id, sessionId: event.sessionId, role: "tool" as const, content: JSON.stringify({ input: { description: "分析问题并规划下一步" } }), createdAt: event.ts, meta: { toolName: "thinking", messageKind: "reasoning", phase: "running" as const, hookEventName: "tool_call_start", toolOutput: parsed.text } }];
 				});
 				break;
 			}
 			case "chat_tool_call_start": {
+				endReasoning();
 				streamingIdRef.current = null;
 				setStreamingId(null);
 				const payload = parseJson<{ toolCallId?: string; toolName?: string; input?: unknown }>(event.chunk) ?? {};
@@ -237,6 +252,8 @@ export function useChatSession() {
 						error?: string;
 						durationMs?: number;
 						exitCode?: number;
+						title?: string;
+						metadata?: Record<string, unknown>;
 					}>(event.chunk) ?? {};
 				if (!payload.toolCallId) break;
 				diffsStaleRef.current = true;
@@ -252,6 +269,8 @@ export function useChatSession() {
 								toolOutput: typeof payload.output === "string" ? payload.output : JSON.stringify(payload.output ?? ""),
 								durationMs: payload.durationMs,
 								exitCode: payload.exitCode,
+								title: payload.title,
+								toolMetadata: payload.metadata,
 								hookEventName: "tool_call_end",
 								phase: payload.error ? "failure" : "success",
 							},
@@ -263,10 +282,12 @@ export function useChatSession() {
 			case "chat_usage": {
 				const usage = parseJson<{ inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cost?: number }>(event.chunk);
 				if (usage) {
+					setHasUsage(true);
 					setSummary((current) => ({
 						toolCalls: current.toolCalls,
-						tokensIn: usage.inputTokens ?? current.tokensIn,
+						tokensIn: current.tokensIn + (usage.inputTokens ?? 0),
 						tokensOut: (current.tokensOut ?? 0) + (usage.outputTokens ?? 0),
+						cacheReadTokens: (current.cacheReadTokens ?? 0) + (usage.cacheReadTokens ?? 0),
 					}));
 				}
 				break;
@@ -282,7 +303,10 @@ export function useChatSession() {
 				diffsStaleRef.current = true;
 				break;
 			case "chat_done": {
+				endReasoning();
+				setRunEndedAt(event.ts);
 				const payload = parseJson<{ reason?: string; text?: string }>(event.chunk);
+				setRunOutcome(payload?.reason === "error" ? "error" : payload?.reason === "aborted" ? "cancelled" : "completed");
 				if (payload?.reason === "error" && payload.text) setError(payload.text);
 				setStreamingId(null);
 				streamingIdRef.current = null;
@@ -303,7 +327,9 @@ export function useChatSession() {
 			const value = payload as { sessionId: string; status: ChatSessionStatus };
 			if (value.sessionId !== sessionRef.current) return;
 			setStatus(value.status);
+			if (["completed", "cancelled", "error"].includes(value.status)) setRunOutcome(value.status);
 			if (["idle", "completed", "error", "cancelled"].includes(value.status)) {
+				setRunEndedAt((previous) => previous ?? Date.now());
 				setStreamingId(null);
 				streamingIdRef.current = null;
 			}
@@ -326,12 +352,14 @@ export function useChatSession() {
 		async (id?: string) => {
 			const target = id ?? sessionRef.current;
 			if (!target) return;
+			const generation = turnGenerationRef.current;
 			try {
-				const result = await desktopClient.invoke<{ diffs: FileDiffEntryPayload[] }>("list_session_diffs", { sessionId: target });
+				const result = await desktopClient.invoke<{ diffs: FileDiffEntryPayload[] }>("list_session_diffs", { sessionId: target, latestTurn: true });
+				if (sessionRef.current !== target || turnGenerationRef.current !== generation) return;
 				setDiffs(result.diffs ?? []);
 				diffsStaleRef.current = false;
 			} catch (e) {
-				setError(e instanceof Error ? e.message : String(e));
+				if (sessionRef.current === target && turnGenerationRef.current === generation) setError(e instanceof Error ? e.message : String(e));
 			}
 		},
 		[],
@@ -346,8 +374,13 @@ export function useChatSession() {
 		} catch {}
 	}, []);
 
+	useEffect(() => {
+		if (sessionId && runStartedAt && ["idle", "completed", "cancelled", "error"].includes(status)) void loadDiffs(sessionId);
+	}, [sessionId, status, runStartedAt, loadDiffs]);
+
 	const selectSession = useCallback(
 		async (id: string | null) => {
+			turnGenerationRef.current++;
 			sessionRef.current = id;
 			if (!id) {
 				setSessionId(null);
@@ -357,6 +390,11 @@ export function useChatSession() {
 				setApprovals([]);
 				setDiffs([]);
 				setNodes([]);
+				setRunStartedAt(null);
+				setRunEndedAt(null);
+				setSummary(EMPTY_SUMMARY);
+				setHasUsage(false);
+				reasoningIdRef.current = null;
 				return;
 			}
 			setSessionId(id);
@@ -366,6 +404,14 @@ export function useChatSession() {
 			setApprovals([]);
 			setDiffs([]);
 			setNodes([]);
+			setRunStartedAt(null);
+			setRunEndedAt(null);
+			reasoningIdRef.current = null;
+			setSummary(EMPTY_SUMMARY);
+			setHasUsage(false);
+			setStatus("idle");
+			setMessages([]);
+			setConfig(null);
 			try {
 				const messagesResult = await desktopClient.invoke<{ messages: ChatMessage[] }>("read_session_messages", {
 					sessionId: id,
@@ -373,12 +419,20 @@ export function useChatSession() {
 				});
 				if (sessionRef.current !== id) return;
 				setMessages(messagesResult.messages ?? []);
+				const history = messagesResult.messages ?? [];
+				const lastUser = history.findLastIndex((message) => message.role === "user");
+				const turn = history.slice(lastUser + 1).filter((message) => message.role === "assistant");
+				setRunStartedAt(lastUser >= 0 ? history[lastUser].createdAt : null);
+				setRunEndedAt(turn.reduce((latest, message) => Math.max(latest, message.meta?.completedAt ?? 0), 0) || null);
+				setSummary({ toolCalls: 0, tokensIn: turn.reduce((total, message) => total + (message.meta?.inputTokens ?? 0), 0), tokensOut: turn.reduce((total, message) => total + (message.meta?.outputTokens ?? 0), 0), cacheReadTokens: turn.reduce((total, message) => total + (message.meta?.cacheReadTokens ?? 0), 0) });
+				setHasUsage(turn.some((message) => (message.meta?.inputTokens ?? 0) + (message.meta?.outputTokens ?? 0) + (message.meta?.cacheReadTokens ?? 0) > 0));
 				const session = await desktopClient.invoke<{ session: { config: ChatSessionConfig; status: ChatSessionStatus } }>("get_session", {
 					sessionId: id,
 				});
 				if (sessionRef.current !== id) return;
 				setConfig(session.session?.config ?? null);
 				setStatus(session.session?.status ?? "idle");
+				setRunOutcome(session.session?.status ?? "idle");
 				const approvalsResult = await desktopClient.invoke<{ approvals: ToolApprovalRequestItem[] }>("poll_tool_approvals", { sessionId: id });
 				if (sessionRef.current === id) setApprovals(approvalsResult.approvals ?? []);
 			} catch (e) {
@@ -453,16 +507,27 @@ export function useChatSession() {
 	const send = useCallback(async (prompt: string, options: { skillId?: string; attachments?: string[] } = {}) => {
 		const target = sessionRef.current;
 		if (!target || !prompt.trim()) return;
+		turnGenerationRef.current++;
+		reasoningIdRef.current = null;
 		const optimisticId = makeId("msg");
 		setMessages((previous) => [...previous, { id: optimisticId, sessionId: target, role: "user", content: prompt, createdAt: Date.now() }]);
 		// The transcript is re-read from the engine on the next open, so the
 		// optimistic bubble is replaced rather than duplicated.
 		setError(null);
+		setRunStartedAt(Date.now());
+		setStatus("starting");
+		setRunOutcome("running");
+		setRunEndedAt(null);
+		setSummary(EMPTY_SUMMARY);
+		setHasUsage(false);
+		setDiffs([]);
 		try {
 			await desktopClient.invoke("chat_session_command", { action: "send", sessionId: target, prompt, ...options }, null);
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e));
 			setStatus("error");
+			setRunOutcome("error");
+			setRunEndedAt(Date.now());
 			setMessages((previous) => previous.filter((message) => message.id !== optimisticId));
 			throw e;
 		}
@@ -517,14 +582,13 @@ export function useChatSession() {
 					name: draft.profileName,
 					protocol: draft.protocol,
 					baseUrl: draft.baseUrl,
-					models: draft.models,
+					models: [draft.model.trim()],
 					apiKey: draft.apiKey || undefined,
 				});
 				await desktopClient.invoke("save_model_settings", {
 					lastWorkspace: draft.workspaceRoot,
 					autoApproveEdits: draft.autoApproveEdits,
 					autoApproveCommands: draft.autoApproveCommands,
-					theme: draft.theme,
 				});
 				await refreshSettings();
 				return profileResult.profileId;
@@ -594,6 +658,10 @@ export function useChatSession() {
 			config,
 			error,
 			summary,
+			runStartedAt,
+			runEndedAt,
+			runOutcome,
+			hasUsage,
 			approvals,
 			transportState,
 			sessions,
@@ -644,6 +712,10 @@ export function useChatSession() {
 			config,
 			error,
 			summary,
+			runStartedAt,
+			runEndedAt,
+			runOutcome,
+			hasUsage,
 			approvals,
 			transportState,
 			sessions,
