@@ -70,7 +70,7 @@ function main() {
 		}
 	}
 
-	const zip = join(DELIVERY, `某科学的Agent-${version}-source.zip`);
+	const zip = join(DELIVERY, `New-Harness-${version}-source.zip`);
 	// Build into a scratch file first: some hosts refuse to delete or rename an
 	// existing deliverable while still allowing it to be written, and tar itself
 	// gives up if it cannot create the output. Writing the bytes afterwards always
@@ -93,7 +93,7 @@ function main() {
 	}
 
 	// bsdtar without zip support (or no scratch space): gzipped tarball.
-	const tarball = join(DELIVERY, `某科学的Agent-${version}-source.tar.gz`);
+	const tarball = join(DELIVERY, `New-Harness-${version}-source.tar.gz`);
 	const fallback = ["tar", "-c", "-z", "-f", tarball];
 	for (const pattern of EXCLUDES) fallback.push(`--exclude=${pattern}`);
 	fallback.push(...INCLUDE);

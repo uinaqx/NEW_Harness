@@ -30,7 +30,9 @@ const SHELL_DIR = join(ROOT, "shell");
 const TAURI_DIR = join(SHELL_DIR, "src-tauri");
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 const DELIVERY = join(ROOT, "delivery", pkg.version);
-const PRODUCT_NAME = "某科学的Agent";
+// GitHub release assets strip non-ASCII filename prefixes, so keep delivery
+// filenames portable even though the installed application's name is Chinese.
+const PRODUCT_NAME = "New-Harness";
 const SKIP_SHELL = process.argv.includes("--skip-shell");
 /** Jump straight to the installer (useful while iterating on the Rust shell). */
 const ONLY_SHELL = process.argv.includes("--only-shell");
