@@ -17,10 +17,12 @@ test("conversation renders feedback but not tools, output, status steps or reaso
 	for (const text of ["隐藏思考", "隐藏工具参数", "隐藏工具输出", "隐藏步骤摘要"]) expect(html).not.toContain(text);
 });
 
-test("settings has a single model input and folder picker, no appearance or cancel action", () => {
-	const html = renderToStaticMarkup(<SettingsDialog open mode="update" settings={null} lastWorkspace="" osProtected busyCommand={null} onClose={() => {}} onSave={async () => "p"} onDeleteProfile={async () => {}} onTest={async () => ({ ok: true, kind: "ok", message: "ok", latencyMs: 0 })} onValidateWorkspace={async () => ({ valid: true })} onPickWorkspace={async () => null} />);
+test("settings has left navigation, a single model input and folder picker", () => {
+	const html = renderToStaticMarkup(<SettingsDialog open mode="update" settings={null} lastWorkspace="" osProtected busyCommand={null} onClose={() => {}} onSave={async () => "p"} onDeleteProfile={async () => {}} onTest={async () => ({ ok: true, kind: "ok", message: "ok", latencyMs: 0 })} onValidateWorkspace={async () => ({ valid: true })} onPickWorkspace={async () => null} onAppearanceChange={async () => {}} />);
 	expect(html).toContain("模型 ID");
 	expect(html).toContain("选择文件夹");
+	expect(html).toContain("个人");
+	expect(html).toContain("外观");
 	expect(html).not.toContain("textarea");
 	expect(html).not.toContain("外观主题");
 	expect(html).not.toContain("取消");
@@ -28,11 +30,18 @@ test("settings has a single model input and folder picker, no appearance or canc
 
 test("canvas retains overflow above the six-row main trace and displays real line metrics", () => {
 	const messages: ChatMessage[] = [{ id: "u", sessionId: "s", role: "user", content: "任务", createdAt: 1 }, ...Array.from({ length: 10 }, (_, index) => ({ id: String(index), sessionId: "s", role: "tool" as const, content: '{"input":{"filePath":"a.ts"}}', createdAt: 1, meta: { toolName: "edit", phase: "success" as const, toolMetadata: { filediff: { additions: 49, deletions: 0 } } } }))];
-	const html = renderToStaticMarkup(<ExecutionCanvas messages={messages} status="running" sessionId="s" approvals={[]} startedAt={1} onApprove={() => {}} onReject={() => {}} />);
+	const html = renderToStaticMarkup(<ExecutionCanvas messages={messages} status="running" sessionId="s" approvals={[]} questions={[]} startedAt={1} onApprove={() => {}} onReject={() => {}} onAnswer={async () => {}} />);
 	expect((html.match(/class="harness-trace-row"/g) ?? []).length).toBe(6);
 	expect(html).toContain("较早的已结束流程");
 	expect(html).toContain("修改文件代码");
 	expect(html).toContain("+49");
+});
+
+test("question tool renders answer choices and a submit action", () => {
+	const html = renderToStaticMarkup(<ExecutionCanvas messages={[]} status="running" sessionId="s" approvals={[]} questions={[{ requestId: "q", sessionId: "s", questions: [{ header: "风格", question: "要什么风格？", options: [{ label: "简洁", description: "单色" }], custom: true }] }]} startedAt={1} onApprove={() => {}} onReject={() => {}} onAnswer={async () => {}} />);
+	expect(html).toContain("要什么风格？");
+	expect(html).toContain("简洁");
+	expect(html).toContain("提交回答");
 });
 
 test("task result lists files and sums input, output and cached tokens", () => {

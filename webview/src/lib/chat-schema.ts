@@ -10,6 +10,7 @@ export type {
 	SessionRecord,
 	AgentChunkEvent,
 	ToolApprovalRequestItem,
+	AgentQuestionRequestItem,
 	ProcessContext,
 	ChatDonePayload,
 	ToolCallStartPayload,

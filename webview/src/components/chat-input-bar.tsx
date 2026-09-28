@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Atom, BadgeCheck, Blocks, BookOpen, Brush, Bug, Check, ChevronDown, FilePlus2, FlaskConical, Folder, FolderOpen, GitBranch, GitPullRequest, LayoutTemplate, Lightbulb, ListTodo, MessageSquareText, Palette, PencilLine, Plus, Send, Settings, Shapes, Square, Sticker, Target, TestTubeDiagonal, Workflow, X, type LucideIcon } from "lucide-react";
+import { Atom, BadgeCheck, Blocks, BookOpen, Brush, Bug, Check, ChevronDown, FilePlus2, FlaskConical, Folder, FolderOpen, GitBranch, GitPullRequest, Hand, LayoutTemplate, Lightbulb, ListTodo, MessageSquareText, Palette, PencilLine, Plus, Send, Settings, Shapes, Shield, ShieldCheck, Square, Sticker, Target, TestTubeDiagonal, Workflow, X, type LucideIcon } from "lucide-react";
 import { BUILTIN_SKILLS } from "@shared/skills";
 import type { ApiProfilePayload, ProjectListItemPayload } from "@/lib/chat-schema";
 
@@ -24,6 +24,8 @@ interface Props {
 	onProfileModelChange: (profileId: string, model: string) => void;
 	onModeChange: (mode: "act" | "plan") => void;
 	onGoalChange: (goal: string) => void;
+	onApprovalModeChange: (mode: "ask" | "auto" | "full") => Promise<void>;
+	approvalMode: "ask" | "auto" | "full";
 	busy: boolean;
 	model: string;
 	profileId: string;
@@ -38,9 +40,9 @@ interface Props {
 
 function folderName(path: string): string { return path.split(/[\\/]/).filter(Boolean).pop() || path; }
 
-export function ChatInputBar({ onSend, onStop, onOpenSettings, onPickFolder, onPickFiles, onWorkspaceChange, onProfileModelChange, onModeChange, onGoalChange, busy, model, profileId, profiles, kind, workspace, projects, mode, goal, workspaceLocked }: Props) {
+export function ChatInputBar({ onSend, onStop, onOpenSettings, onPickFolder, onPickFiles, onWorkspaceChange, onProfileModelChange, onModeChange, onGoalChange, onApprovalModeChange, approvalMode, busy, model, profileId, profiles, kind, workspace, projects, mode, goal, workspaceLocked }: Props) {
 	const [text, setText] = useState("");
-	const [menu, setMenu] = useState<"add" | "workspace" | "model" | "goal" | null>(null);
+	const [menu, setMenu] = useState<"add" | "workspace" | "model" | "goal" | "approval" | null>(null);
 	const [goalDraft, setGoalDraft] = useState(goal);
 	const [attachments, setAttachments] = useState<string[]>([]);
 	const [skillId, setSkillId] = useState<string | undefined>();
@@ -99,6 +101,7 @@ export function ChatInputBar({ onSend, onStop, onOpenSettings, onPickFolder, onP
 					<textarea ref={ref} autoFocus value={text} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submit(); } }} rows={2} placeholder={busy ? "正在回复…" : kind === "chat" ? "开始聊天…" : "描述你的任务，或输入你想修改的内容…"} disabled={busy} />
 					<div className="composer-bar">
 						{kind === "work" ? <><button className="composer-icon" title="添加文件、目标、技能" aria-expanded={menu === "add"} onClick={() => setMenu(menu === "add" ? null : "add")}><Plus size={19} /></button>
+						<button className="composer-approval" aria-label="批准规则" aria-expanded={menu === "approval"} onClick={() => setMenu(menu === "approval" ? null : "approval")} title="设置工具批准规则">{approvalMode === "ask" ? <Hand size={14} /> : approvalMode === "auto" ? <ShieldCheck size={14} /> : <Shield size={14} />}<span>{approvalMode === "ask" ? "请求批准" : approvalMode === "auto" ? "帮我批准" : "完全访问"}</span><ChevronDown size={12} /></button>
 						<button className="composer-location" title={workspace || "选择访问位置"} onClick={() => setMenu(menu === "workspace" ? null : "workspace")}><Folder size={14} /><span>{workspace ? folderName(workspace) : "选择访问位置"}</span><ChevronDown size={13} /></button>
 						{mode === "plan" && <button className="composer-plan-pill" onClick={() => onModeChange("act")} title="关闭计划模式"><Lightbulb size={13} /> 计划模式 <X size={11} /></button>}</> : <span className="composer-chat-pill"><MessageSquareText size={14} /> Chat · 仅文字</span>}
 						<span className="composer-spacer" />
@@ -117,6 +120,7 @@ export function ChatInputBar({ onSend, onStop, onOpenSettings, onPickFolder, onP
 						<div className="skill-list">{BUILTIN_SKILLS.map((skill) => { const Icon = SKILL_ICONS[skill.id] ?? Blocks; return <button key={skill.id} onClick={() => { setSkillId(skill.id); setMenu(null); }}><span className="skill-badge"><Icon size={17} strokeWidth={1.8} /></span><span><strong>{skill.label}</strong><small>{skill.description}</small></span>{skillId === skill.id && <Check size={14} />}</button>; })}</div>
 				</div>}
 				{kind === "work" && menu === "workspace" && <div className="composer-popover chooser-menu"><div className="popover-label">访问位置</div>{workspace && <div className="current-path" title={workspace}>{workspace}</div>}{!workspaceLocked && <><button onClick={() => void chooseFolder(false)}><FolderOpen size={16} /> 浏览文件夹…</button><div className="popover-label">最近项目</div>{projects.map((project) => <button key={project.id} onClick={() => { onWorkspaceChange(project.workspaceRoot); setMenu(null); }}><Folder size={16} /> {project.name || folderName(project.workspaceRoot)}</button>)}<input type="text" placeholder="或粘贴绝对路径" value={workspace} onChange={(event) => onWorkspaceChange(event.target.value)} /></>}{workspaceLocked && <div className="popover-note">现有对话的工作区固定。请在项目下新建对话来切换位置。</div>}</div>}
+				{kind === "work" && menu === "approval" && <div className="composer-popover chooser-menu approval-menu"><div className="popover-label">如何批准 Agent 操作？</div>{([ ["ask", Hand, "请求批准", "文件修改、命令和项目外访问均询问"], ["auto", ShieldCheck, "帮我批准", "自动批准修改与命令，项目外访问仍询问"], ["full", Shield, "完全访问", "允许修改、命令、项目外访问与网络工具"] ] as const).map(([value, Icon, label, detail]) => <button key={value} onClick={() => { void onApprovalModeChange(value).then(() => setMenu(null)).catch((cause) => setError(cause instanceof Error ? cause.message : String(cause))); }}><Icon size={17} /><span className="approval-choice"><strong>{label}</strong><small>{detail}</small></span>{approvalMode === value && <Check size={14} />}</button>)}<p className="popover-note">变更会在下一轮任务开始时应用。</p></div>}
 				{menu === "model" && <div className="composer-popover chooser-menu model-menu"><div className="popover-label">选择模型</div>{profiles.map((profile) => <div key={profile.id} className="model-group"><div className="model-group-name">{profile.name}{!profile.hasApiKey && <small>未配置 Key</small>}</div>{profile.models.map((item) => <button key={`${profile.id}/${item}`} className="model-option" onClick={() => { onProfileModelChange(profile.id, item); setMenu(null); }}><span>{item}</span>{profileId === profile.id && model === item && <Check size={15} />}</button>)}</div>)}<button onClick={() => { setMenu(null); onOpenSettings(); }}><Settings size={15} /> 管理 API 与模型</button></div>}
 				{menu === "goal" && <div className="composer-popover chooser-menu goal-menu"><div className="popover-label">持续目标</div><textarea value={goalDraft} onChange={(event) => setGoalDraft(event.target.value)} placeholder="写下这个对话要持续追求的目标" rows={3} /><button onClick={() => { onGoalChange(goalDraft.trim()); setMenu(null); }}><Check size={15} /> 保存目标</button>{goal && <button onClick={() => { onGoalChange(""); setGoalDraft(""); setMenu(null); }}><X size={15} /> 清除目标</button>}</div>}
 			</div>

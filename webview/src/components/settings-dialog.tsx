@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, FolderOpen, Loader2, Plus, ShieldCheck, Trash2, X, XCircle } from "lucide-react";
+import { CheckCircle2, CircleUserRound, FolderOpen, Loader2, Palette, Plus, Settings2, ShieldCheck, Trash2, X, XCircle } from "lucide-react";
+import { BrandMark } from "@/components/brand-mark";
+import { desktopClient } from "@/lib/desktop-client";
 import type { ConnectionTestResult, ModelSettingsPayload, ProviderProtocol } from "@/lib/chat-schema";
 import { DEFAULT_BASE_URLS, DEFAULT_MODELS, PROTOCOL_LABELS } from "@/lib/config";
 import type { SettingsDraft } from "@/hooks/use-chat-session";
@@ -17,6 +19,7 @@ interface Props {
 	onTest: (draft: SettingsDraft) => Promise<ConnectionTestResult>;
 	onValidateWorkspace: (path: string) => Promise<{ valid: boolean; resolved?: string; error?: string }>;
 	onPickWorkspace: () => Promise<string | null>;
+	onAppearanceChange: (patch: { theme?: "dark" | "light"; fontFamily?: "system" | "mono"; fontSize?: "small" | "normal" | "large" }) => Promise<void>;
 }
 
 function draftFrom(settings: ModelSettingsPayload | null, lastWorkspace: string, profileId?: string): SettingsDraft {
@@ -30,17 +33,18 @@ function draftFrom(settings: ModelSettingsPayload | null, lastWorkspace: string,
 		workspaceRoot: settings?.lastWorkspace || lastWorkspace,
 		// Never prefilled: the key lives only in the OS protected store.
 		apiKey: "",
-		autoApproveEdits: settings?.autoApproveEdits ?? false,
-		autoApproveCommands: settings?.autoApproveCommands ?? false,
 	};
 }
 
-export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtected, busyCommand, onClose, onSave, onDeleteProfile, onTest, onValidateWorkspace, onPickWorkspace }: Props) {
+export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtected, busyCommand, onClose, onSave, onDeleteProfile, onTest, onValidateWorkspace, onPickWorkspace, onAppearanceChange }: Props) {
 	const [draft, setDraft] = useState<SettingsDraft>(() => draftFrom(settings, lastWorkspace));
 	const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
 	const [saveState, setSaveState] = useState<{ ok: boolean; message: string } | null>(null);
 	const [workspaceState, setWorkspaceState] = useState<{ valid: boolean; message: string } | null>(null);
 	const [selectedProfileId, setSelectedProfileId] = useState(settings?.defaultProfileId ?? "default");
+	const [tab, setTab] = useState<"personal" | "configuration" | "appearance">("configuration");
+	const [usage, setUsage] = useState<{ sessions: number; turns: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; unavailableSessions: number } | null>(null);
+	const [usageError, setUsageError] = useState<string | null>(null);
 
 	useEffect(() => {
 		if (open) {
@@ -50,8 +54,16 @@ export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtecte
 			setTestResult(null);
 			setSaveState(null);
 			setWorkspaceState(null);
+			setTab("configuration");
 		}
 	}, [open]);
+	useEffect(() => {
+		if (!open || tab !== "personal") return;
+		let active = true;
+		setUsage(null); setUsageError(null);
+		void desktopClient.invoke<NonNullable<typeof usage>>("get_usage_overview", {}, 180_000).then((value) => { if (active) setUsage(value); }).catch((cause) => { if (active) setUsageError(cause instanceof Error ? cause.message : String(cause)); });
+		return () => { active = false; };
+	}, [open, tab]);
 
 	if (!open) return null;
 
@@ -72,13 +84,19 @@ export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtecte
 
 	return (
 		<div className="dialog-overlay">
-			<div className="dialog" role="dialog" aria-modal="true" aria-label="API 设置">
+			<div className="dialog settings-dialog" role="dialog" aria-modal="true" aria-label="设置">
 				<div className="dialog-head">
 					<h2>设置</h2>
 					<button onClick={onClose} aria-label="关闭">
 						<X size={16} />
 					</button>
 				</div>
+				<div className="settings-layout">
+					<nav className="settings-navigation" aria-label="设置分类"><button aria-current={tab === "personal" ? "page" : undefined} onClick={() => setTab("personal")}><CircleUserRound size={17} /> 个人</button><button aria-current={tab === "configuration" ? "page" : undefined} onClick={() => setTab("configuration")}><Settings2 size={17} /> 配置</button><button aria-current={tab === "appearance" ? "page" : undefined} onClick={() => setTab("appearance")}><Palette size={17} /> 外观</button></nav>
+					<div className="settings-content">
+						{tab === "personal" && <section className="settings-personal"><h3>个人使用概览</h3><div className="settings-personal-hero"><BrandMark size={52} /><div><strong>本地使用者</strong><small>统计来自本机保存的 OpenCode 会话</small></div></div>{usage ? <div className="settings-stats"><div><strong>{(usage.inputTokens + usage.outputTokens + usage.cacheReadTokens).toLocaleString()}</strong><span>累计 Token</span></div><div><strong>{usage.inputTokens.toLocaleString()}</strong><span>输入</span></div><div><strong>{usage.outputTokens.toLocaleString()}</strong><span>输出</span></div><div><strong>{usage.cacheReadTokens.toLocaleString()}</strong><span>缓存读取</span></div><div><strong>{usage.turns.toLocaleString()}</strong><span>已完成回复</span></div><div><strong>{usage.sessions.toLocaleString()}</strong><span>本地会话</span></div></div> : usageError ? <p role="alert">{usageError}</p> : <p><Loader2 size={14} className="spin" /> 正在统计本地记录…</p>}{usage && usage.unavailableSessions > 0 && <p>{usage.unavailableSessions} 个会话暂时无法读取，统计值未包含它们。</p>}</section>}
+						{tab === "appearance" && <section className="settings-appearance"><h3>外观</h3><p>颜色和文字会即时切换，当前任务继续运行。</p><div className="field"><label>颜色主题</label><div className="segmented"><button className="seg" data-active={settings?.theme !== "light"} onClick={() => void onAppearanceChange({ theme: "dark" })}>深色</button><button className="seg" data-active={settings?.theme === "light"} onClick={() => void onAppearanceChange({ theme: "light" })}>浅色</button></div></div><div className="field"><label>界面字体</label><div className="segmented"><button className="seg" data-active={settings?.fontFamily !== "mono"} onClick={() => void onAppearanceChange({ fontFamily: "system" })}>系统字体</button><button className="seg" data-active={settings?.fontFamily === "mono"} onClick={() => void onAppearanceChange({ fontFamily: "mono" })}>等宽字体</button></div></div><div className="field"><label>文字大小</label><div className="segmented">{([ ["small", "小"], ["normal", "标准"], ["large", "大"] ] as const).map(([value, label]) => <button className="seg" key={value} data-active={(settings?.fontSize ?? "normal") === value} onClick={() => void onAppearanceChange({ fontSize: value })}>{label}</button>)}</div></div></section>}
+						{tab === "configuration" && <section className="settings-configuration"><h3>模型与工作区</h3>
 				<div className="field">
 					<label>API 配置</label>
 					<div className="api-profile-list">
@@ -155,19 +173,6 @@ export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtecte
 					)}
 				</div>
 
-				<div className="row2">
-					<label className="check">
-						<input type="checkbox" checked={draft.autoApproveEdits} onChange={(event) => set("autoApproveEdits", event.target.checked)} />
-						自动批准文件修改
-					</label>
-					<label className="check">
-						<input type="checkbox" checked={draft.autoApproveCommands} onChange={(event) => set("autoApproveCommands", event.target.checked)} />
-						自动批准命令执行
-					</label>
-				</div>
-				<div className="hint" style={{ marginTop: -6 }}>
-					关闭时通常会请求授权；具体判定由执行引擎负责。第一版不提供「永久允许全部」。
-				</div>
 
 				{testResult && (
 					<div className={testResult.ok ? "test-ok" : "test-bad"}>
@@ -227,6 +232,9 @@ export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtecte
 					</button>
 				</div>
 				<div className="hint">「保存配置」与「测试连接」是独立操作：测试会发送一个最小、无工具调用的真实请求。</div>
+						</section>}
+					</div>
+				</div>
 			</div>
 		</div>
 	);

@@ -171,6 +171,18 @@ export interface ToolApprovalRequestItem {
 	summary?: string;
 }
 
+export interface AgentQuestionRequestItem {
+	requestId: string;
+	sessionId: string;
+	questions: Array<{
+		question: string;
+		header: string;
+		options: Array<{ label: string; description: string }>;
+		multiple?: boolean;
+		custom?: boolean;
+	}>;
+}
+
 export interface ProcessContext {
 	workspaceRoot: string;
 	cwd: string;
@@ -257,7 +269,10 @@ export interface ModelSettingsPayload {
 	lastWorkspace: string;
 	autoApproveEdits: boolean;
 	autoApproveCommands: boolean;
+	fullAccess: boolean;
 	theme: "dark" | "light";
+	fontFamily: "system" | "mono";
+	fontSize: "small" | "normal" | "large";
 	legacyMigratedAt?: number;
 	/** Always empty: the key never travels to the webview. */
 	apiKey: "";
@@ -331,4 +346,5 @@ export interface ProjectListItemPayload {
 	workspaceRoot: string;
 	lastOpenedAt: number;
 	name?: string;
+	icon?: "folder" | "code" | "globe" | "terminal" | "book" | "sparkles";
 }

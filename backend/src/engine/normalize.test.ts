@@ -18,3 +18,11 @@ test("tool-end carries actual diff metadata to the UI", () => {
 	expect(end?.metadata).toEqual(metadata);
 	expect(end?.durationMs).toBe(2);
 });
+
+test("question lifecycle surfaces choices once and clears after reply", () => {
+	const normalizer = new EventNormalizer({ sessionId: "s" });
+	const asked = { type: "question.asked", properties: { id: "q", sessionID: "s", questions: [{ header: "风格", question: "选择风格", options: [{ label: "简洁", description: "单色" }] }] } };
+	expect(normalizer.handle(asked)).toEqual([{ kind: "question", item: { requestId: "q", sessionId: "s", questions: asked.properties.questions } }]);
+	expect(normalizer.handle(asked)).toEqual([]);
+	expect(normalizer.handle({ type: "question.replied", properties: { requestID: "q", sessionID: "s" } })).toEqual([{ kind: "question-cleared", requestId: "q" }]);
+});

@@ -38,6 +38,10 @@ export function App() {
 		document.documentElement.classList.toggle("dark", theme === "dark");
 		try { localStorage.setItem("harness-theme", theme); } catch {}
 	}, [theme]);
+	useEffect(() => {
+		document.documentElement.dataset.fontFamily = api.settings?.fontFamily ?? "system";
+		document.documentElement.dataset.fontSize = api.settings?.fontSize ?? "normal";
+	}, [api.settings?.fontFamily, api.settings?.fontSize]);
 	const changeTheme = useCallback((next: "dark" | "light") => {
 		setTheme(next);
 		void api.saveTheme(next).catch((error: unknown) => api.setError(error instanceof Error ? error.message : String(error)));
@@ -150,6 +154,7 @@ export function App() {
 				onRename={api.renameSession}
 				onPin={api.pinSession}
 				onRenameProject={api.renameProject}
+				onProjectIcon={api.setProjectIcon}
 				onActionError={(error) => api.setError(error instanceof Error ? error.message : String(error))}
 				theme={theme}
 				onToggleTheme={() => changeTheme(theme === "dark" ? "light" : "dark")}
@@ -230,9 +235,11 @@ export function App() {
 								status={api.status}
 								sessionId={api.sessionId}
 								approvals={api.approvals}
+								questions={api.questions}
 								startedAt={api.runStartedAt}
 								onApprove={api.approve}
 								onReject={api.reject}
+								onAnswer={api.answerQuestion}
 							/>}
 						</div>
 						<ChatInputBar
@@ -245,6 +252,8 @@ export function App() {
 							onProfileModelChange={(profileId, model) => { setSelectedProfileId(profileId); setSelectedModel(model); }}
 							onModeChange={setSelectedMode}
 							onGoalChange={setGoal}
+							onApprovalModeChange={api.setApprovalMode}
+							approvalMode={api.settings?.fullAccess ? "full" : api.settings?.autoApproveEdits && api.settings?.autoApproveCommands ? "auto" : "ask"}
 							busy={api.isBusy}
 							model={selectedModel}
 							profileId={selectedProfileId}
@@ -291,6 +300,7 @@ export function App() {
 				onTest={api.testConnection}
 				onValidateWorkspace={api.validateWorkspace}
 				onPickWorkspace={api.pickWorkspace}
+				onAppearanceChange={api.saveAppearance}
 			/>
 			{projectOpen && <div className="dialog-overlay" onClick={() => setProjectOpen(false)}>
 				<div className="dialog project-dialog" onClick={(event) => event.stopPropagation()}>

@@ -6,6 +6,7 @@
  * never sees raw engine types or messages.
  */
 import { createOpencodeClient, type OpencodeClient } from "../../../vendor/opencode/sdk/dist/client.js";
+import { createOpencodeClient as createV2Client } from "../../../vendor/opencode/sdk/dist/v2/client.js";
 import { ENGINE_CALL_TIMEOUT_MS, LOOPBACK } from "../config";
 import { classifyEngineError, engineError } from "./errors";
 import { PROVIDER_ID } from "./provider";
@@ -39,6 +40,11 @@ export function engineClient({ url, directory, username, password }: ClientOptio
 
 export function forgetClients(): void {
 	clients.clear();
+}
+
+/** The pinned v1 client predates question endpoints; use its bundled v2 API. */
+export function questionClient({ url, username, password }: ClientOptions) {
+	return createV2Client({ baseUrl: url, headers: { authorization: basicAuth(username, password) } });
 }
 
 /** Wrap a promise with a deadline; the engine never gets to hang us forever. */

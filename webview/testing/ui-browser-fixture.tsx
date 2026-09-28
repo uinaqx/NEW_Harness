@@ -15,19 +15,22 @@ const steps: ChatMessage[] = Array.from({ length: 9 }, (_, index) => ({ id: `t${
 const messages: ChatMessage[] = [{ id: "u", sessionId: "s", role: "user", content: "调整执行画布，并显示阅读行数、文件修改与任务耗时。", createdAt: startedAt }, ...steps, { id: "a", sessionId: "s", role: "assistant", content: "画布和设置已完成调整，正在检查项目类型。", reasoning: "不应出现在对话里的思考", createdAt: startedAt + 10000 }];
 const results: Array<{ name: string; ok: boolean }> = [];
 let closes = 0, saves = 0, picked = 0, opened = "";
+let answered: string[][] | null = null;
+let reopenSettings = () => {};
 const check = (name: string, ok: boolean) => results.push({ name, ok });
 const pause = () => new Promise<void>((resolve) => setTimeout(resolve, 80));
 const button = (text: string) => Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((item) => item.textContent?.includes(text));
 
 function Fixture() {
   const [settingsOpen, setSettingsOpen] = useState(query.get("view") === "settings");
+  reopenSettings = () => setSettingsOpen(true);
   return <div className="app" style={{ gridTemplateColumns: "220px 1fr" }}>
     <aside className="app-sidebar" style={{ padding: "24px 18px" }}><strong>某科学的Agent</strong><p style={{ marginTop: 34 }}>新对话</p><small>项目</small><p>New Harness</p><p style={{ paddingLeft: 12 }}>界面与执行画布</p><button style={{ marginTop: "auto", textAlign: "left" }} onClick={() => document.documentElement.classList.toggle("dark")}>切换主题</button></aside>
     <main className="app-main"><header className="app-titlebar">界面与执行画布</header><div className="app-conversation">
       <ChatMessages messages={messages} status="running" streamingId={null} error={null}><TaskResult startedAt={startedAt} endedAt={startedAt + 123000} busy={false} status="completed" summary={{ toolCalls: 8, tokensIn: 2400, tokensOut: 1200, cacheReadTokens: 700 }} hasUsage diffs={diffs} onOpenFile={(file) => { opened = file; }} onReview={() => {}} /></ChatMessages>
-      <ExecutionCanvas messages={messages} status="running" sessionId="s" approvals={[]} startedAt={startedAt} onApprove={() => {}} onReject={() => {}} />
+	  <ExecutionCanvas messages={messages} status="running" sessionId="s" approvals={[]} questions={query.get("view") === "question" ? [{ requestId: "q", sessionId: "s", questions: [{ header: "方案", question: "请选择实现方案", options: [{ label: "简洁", description: "使用简单布局" }, { label: "详细", description: "提供更多信息" }], custom: true }] }] : []} startedAt={startedAt} onApprove={() => {}} onReject={() => {}} onAnswer={async (_id, answers) => { answered = answers; }} />
     </div><div style={{ margin: "14px 40px 22px", padding: "20px", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 14, color: "var(--muted-foreground)" }}>继续描述任务…<div style={{ display: "flex", justifyContent: "space-between", marginTop: 20 }}>＋<span>deepseek-flash　↑</span></div></div></main>
-    <SettingsDialog open={settingsOpen} mode="update" settings={null} lastWorkspace="" osProtected busyCommand={null} onClose={() => { closes++; setSettingsOpen(false); }} onSave={async (draft) => { saves++; check("save carries one model", !!draft.model && !("models" in draft)); return "p"; }} onDeleteProfile={async () => {}} onTest={async () => { throw new Error("测试失败可见"); }} onValidateWorkspace={async (path) => ({ valid: true, resolved: path })} onPickWorkspace={async () => { picked++; return "C:\\测试项目"; }} />
+    <SettingsDialog open={settingsOpen} mode="update" settings={null} lastWorkspace="" osProtected busyCommand={null} onClose={() => { closes++; setSettingsOpen(false); }} onSave={async (draft) => { saves++; check("save carries one model", !!draft.model && !("models" in draft)); return "p"; }} onDeleteProfile={async () => {}} onTest={async () => { throw new Error("测试失败可见"); }} onValidateWorkspace={async (path) => ({ valid: true, resolved: path })} onPickWorkspace={async () => { picked++; return "C:\\测试项目"; }} onAppearanceChange={async () => {}} />
   </div>;
 }
 createRoot(document.getElementById("root")!).render(<Fixture />);
@@ -37,6 +40,9 @@ void (async () => {
     document.querySelector<HTMLElement>(".dialog-overlay")!.click();
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); await pause();
     check("backdrop and Escape cannot close settings", closes === 0 && !!document.querySelector('[role="dialog"]'));
+	button("外观")!.click(); await pause();
+	check("appearance tab exposes theme and font controls", !!button("深色") && !!button("等宽字体") && !!button("标准"));
+	button("配置")!.click(); await pause();
     check("theme absent from API settings", !document.querySelector('[role="dialog"]')!.textContent?.includes("外观主题"));
     check("one model field", !document.querySelector('[role="dialog"] textarea'));
     button("选择文件夹")!.click(); await pause();
@@ -61,6 +67,8 @@ void (async () => {
   document.querySelector<HTMLButtonElement>(".task-file-list button")!.click();
   check("file click targets corresponding file", opened === diffs[0].file);
   check("completed duration and tokens", document.querySelector(".task-telemetry")!.textContent!.includes("2分3秒") && document.querySelector(".task-telemetry")!.textContent!.includes("4,300 Token"));
+  if (query.get("view") === "question") { button("简洁")!.click(); await pause(); check("question option can be selected", document.querySelector('.question-options button[aria-pressed="true"]')?.textContent?.includes("简洁") === true); button("提交回答")!.click(); await pause(); check("question answer reaches submit callback", answered?.[0]?.[0] === "简洁"); }
   if (query.get("view") === "settings") { button("切换主题")!.click(); await pause(); check("theme switch preserves trace", document.querySelectorAll(".harness-trace-row").length === count); }
+	if (query.get("view") === "settings") { reopenSettings(); await new Promise<void>((resolve) => setTimeout(resolve, 350)); const pane = document.querySelector<HTMLElement>(".settings-dialog")!; const heading = document.querySelector<HTMLElement>(".settings-content h3")!; const bg = getComputedStyle(pane).backgroundColor; const fg = getComputedStyle(heading).color; check(`settings light contrast (${bg}, ${fg})`, Number(bg.match(/\d+/)?.[0] ?? 0) > 190 && Number(fg.match(/\d+/)?.[0] ?? 255) < 140); }
   const output = document.createElement("script"); output.id = "ui-qa-result"; output.type = "application/json"; output.textContent = JSON.stringify(results); document.body.append(output);
 })();

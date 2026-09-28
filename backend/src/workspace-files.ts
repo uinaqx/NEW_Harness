@@ -1,12 +1,19 @@
 import { open, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
-/** Read a bounded text file, resolving symlinks before enforcing the workspace boundary. */
-export async function readWorkspaceFile(workspace: string, file: string): Promise<{ file: string; content: string; truncated: boolean }> {
+export async function resolveWorkspaceFile(workspace: string, file: string): Promise<{ root: string; target: string; relativePath: string }> {
 	const root = await realpath(workspace);
 	const target = await realpath(resolve(root, file));
-	const path = relative(root, target);
-	if (!path || path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path)) throw new Error("文件不在当前项目内。");
+	const relativePath = relative(root, target);
+	if (!relativePath || relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) throw new Error("文件不在当前项目内。");
+	const info = await (await import("node:fs/promises")).stat(target);
+	if (!info.isFile()) throw new Error("所选路径不是文件。");
+	return { root, target, relativePath };
+}
+
+/** Read a bounded text file, resolving symlinks before enforcing the workspace boundary. */
+export async function readWorkspaceFile(workspace: string, file: string): Promise<{ file: string; content: string; truncated: boolean }> {
+	const { target, relativePath: path } = await resolveWorkspaceFile(workspace, file);
 	const handle = await open(target, "r");
 	try {
 		const info = await handle.stat();

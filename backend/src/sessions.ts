@@ -17,6 +17,7 @@ export interface ProjectEntry {
 	workspaceRoot: string;
 	lastOpenedAt: number;
 	name?: string;
+	icon?: "folder" | "code" | "globe" | "terminal" | "book" | "sparkles";
 }
 
 export interface SessionIndexEntry {
@@ -158,6 +159,15 @@ export async function renameProject(id: string, name: string): Promise<ProjectEn
 	const project = index.projects.find((item) => item.id === id);
 	if (!project) return undefined;
 	project.name = name;
+	await saveIndex(index);
+	return project;
+}
+
+export async function setProjectIcon(id: string, icon: ProjectEntry["icon"]): Promise<ProjectEntry | undefined> {
+	const index = await loadIndex();
+	const project = index.projects.find((item) => item.id === id);
+	if (!project) return undefined;
+	project.icon = icon;
 	await saveIndex(index);
 	return project;
 }

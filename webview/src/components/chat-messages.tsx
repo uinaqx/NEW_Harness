@@ -38,13 +38,14 @@ function renderContent(content: string) {
 
 export function ChatMessages({ messages, status, streamingId, error, showWaiting = false, children }: Props) {
 	const scrollRef = useRef<HTMLDivElement>(null);
+	const followLatest = useRef(true);
 	const isBusy = status === "starting" || status === "running" || status === "stopping";
 	const awaitingFirst = isBusy && !streamingId && !messages.some((m) => m.role === "tool" && m.meta?.hookEventName === "tool_call_start");
 
 	useEffect(() => {
 		const el = scrollRef.current;
-		if (el) el.scrollTop = el.scrollHeight;
-	}, [messages.length, streamingId, children]);
+		if (el && followLatest.current) el.scrollTop = el.scrollHeight;
+	}, [messages, streamingId, children]);
 
 	const items = useMemo(() => messages.filter((message) => message.role === "user" || message.role === "error" || (message.role === "assistant" && message.content.trim())), [messages]);
 
@@ -53,7 +54,7 @@ export function ChatMessages({ messages, status, streamingId, error, showWaiting
 	}
 
 	return (
-		<div className="chat-scroll" ref={scrollRef}>
+		<div className="chat-scroll" ref={scrollRef} onScroll={(event) => { const el = event.currentTarget; followLatest.current = el.scrollHeight - el.scrollTop - el.clientHeight < 64; }}>
 			<div className="chat-inner">
 				{items.map((m) => {
 					const isUser = m.role === "user";

@@ -14,6 +14,9 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "
 import { dirname } from "node:path";
 import { APP_VERSION, paths } from "./config";
 
+/** Separate from the WebSocket token: preview pages can see their own URL. */
+export const previewToken = randomBytes(24).toString("base64url");
+
 export interface RuntimeHandshake {
 	pid: number;
 	port: number;

@@ -17,11 +17,12 @@
  */
 import { mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
-import type { ChatMessage, ChatSessionStatus, ToolApprovalRequestItem } from "../../../shared/types";
+import type { AgentQuestionRequestItem, ChatMessage, ChatSessionStatus, ToolApprovalRequestItem } from "../../../shared/types";
+import type { QuestionRequest } from "../../../vendor/opencode/sdk/dist/v2/gen/types.gen.js";
 import { ENGINE_PROMPT_TIMEOUT_MS, paths } from "../config";
 import type { AppSettings } from "../app-settings";
 import { proxyForUrl } from "../network-proxy";
-import { call, dirQuery, engineClient, forgetClients, type OpencodeClient } from "./client";
+import { call, dirQuery, engineClient, forgetClients, questionClient, type OpencodeClient } from "./client";
 import { classifyEngineError, engineError, redactText, userError, type EngineFailure } from "./errors";
 import { EventNormalizer, type NormalizedEvent, type ToolNodeSnapshot } from "./normalize";
 import { ENGINE_VERSION } from "./pin";
@@ -58,6 +59,7 @@ export interface RunHandle {
 export type ChunkSink = (sessionId: string, stream: string, chunk: string, index: number) => void;
 export type StatusSink = (sessionId: string, status: ChatSessionStatus) => void;
 export type ApprovalSink = (sessionId: string, approvals: ToolApprovalRequestItem[]) => void;
+export type QuestionSink = (sessionId: string, questions: AgentQuestionRequestItem[]) => void;
 export type EngineStateSink = (status: EngineStatus) => void;
 
 interface Runtime {
@@ -67,6 +69,7 @@ interface Runtime {
 	normalizer: EventNormalizer;
 	status: ChatSessionStatus;
 	approvals: ToolApprovalRequestItem[];
+	questions: AgentQuestionRequestItem[];
 	nodes: ToolNodeSnapshot[];
 	chunkIndex: number;
 	runAbort?: AbortController;
@@ -96,6 +99,7 @@ export class HarnessEngine {
 	private chunkSink: ChunkSink = () => {};
 	private statusSink: StatusSink = () => {};
 	private approvalSink: ApprovalSink = () => {};
+	private questionSink: QuestionSink = () => {};
 	private stateSink: EngineStateSink = () => {};
 	private diagnostics: string[] = [];
 	/**
@@ -122,13 +126,14 @@ export class HarnessEngine {
 	}
 
 	private fingerprint(settings: AppSettings, apiKey: string, profileKeys: Record<string, string>): string {
-		return createHash("sha256").update(JSON.stringify([settings.profiles, settings.defaultProfileId, apiKey, profileKeys, settings.autoApproveEdits, settings.autoApproveCommands])).digest("hex");
+		return createHash("sha256").update(JSON.stringify([settings.profiles, settings.defaultProfileId, apiKey, profileKeys, settings.autoApproveEdits, settings.autoApproveCommands, settings.fullAccess])).digest("hex");
 	}
 
-	bindSinks(sinks: { chunk: ChunkSink; status: StatusSink; approvals: ApprovalSink; engine: EngineStateSink }): void {
+	bindSinks(sinks: { chunk: ChunkSink; status: StatusSink; approvals: ApprovalSink; questions: QuestionSink; engine: EngineStateSink }): void {
 		this.chunkSink = sinks.chunk;
 		this.statusSink = sinks.status;
 		this.approvalSink = sinks.approvals;
+		this.questionSink = sinks.questions;
 		this.stateSink = sinks.engine;
 	}
 
@@ -627,6 +632,7 @@ export class HarnessEngine {
 			normalizer: new EventNormalizer({ sessionId }),
 			status: "idle",
 			approvals: [],
+			questions: [],
 			nodes: [],
 			chunkIndex: 0,
 			done,
@@ -654,6 +660,33 @@ export class HarnessEngine {
 
 	pendingApprovals(sessionId: string): ToolApprovalRequestItem[] {
 		return this.runtimes.get(sessionId)?.approvals ?? [];
+	}
+
+	async pendingQuestions(sessionId: string, directory: string): Promise<AgentQuestionRequestItem[]> {
+		const runtime = this.runtimes.get(sessionId);
+		if (runtime?.questions.length) return runtime.questions;
+		if (this.process.status().state !== "running") return [];
+		const client = this.questionApi(directory);
+		const pending = await call("question.list", (signal) => client.question.list({ directory }, { signal }) as Promise<SdkResult<QuestionRequest[]>>);
+		return (pending ?? []).filter((item) => item.sessionID === sessionId).map((item) => ({ ...item, requestId: item.id, sessionId }));
+	}
+
+	private questionApi(directory: string) {
+		const url = this.process.status().url;
+		if (!url) throw userError("引擎尚未启动");
+		return questionClient({ url, directory, username: this.process.getUsername(), password: this.process.getPassword() });
+	}
+
+	async replyQuestion(sessionId: string, requestId: string, answers: string[][]): Promise<void> {
+		const runtime = this.runtimes.get(sessionId);
+		if (!runtime) throw userError("会话不存在");
+		const pending = runtime.questions.find((item) => item.requestId === requestId) ?? (await this.pendingQuestions(sessionId, runtime.directory)).find((item) => item.requestId === requestId);
+		if (!pending) throw userError("问题已结束，请刷新会话");
+		if (answers.length !== pending.questions.length || answers.some((answer) => !answer.length)) throw userError("请回答所有问题");
+		const client = this.questionApi(runtime.directory);
+		await call("question.reply", (signal) => client.question.reply({ requestID: requestId, directory: runtime.directory, answers }, { signal }) as Promise<SdkResult<unknown>>);
+		runtime.questions = runtime.questions.filter((item) => item.requestId !== requestId);
+		this.questionSink(sessionId, runtime.questions);
 	}
 
 	nodes(sessionId: string): ToolNodeSnapshot[] | null {
@@ -751,6 +784,8 @@ export class HarnessEngine {
 		}
 		runtime.approvals = [];
 		this.emitApprovals(runtime);
+		runtime.questions = [];
+		this.questionSink(runtime.sessionId, []);
 		runtime.runAbort = undefined;
 		this.setStatus(runtime, status);
 		this.setStatus(runtime, "idle");
@@ -778,6 +813,12 @@ export class HarnessEngine {
 				try {
 					await this.replyPermission(sessionId, approval.requestId, "reject");
 				} catch {}
+			}
+		}
+		if (runtime.questions.length) {
+			const client = this.questionApi(runtime.directory);
+			for (const question of runtime.questions) {
+				try { await call("question.reject", (signal) => client.question.reject({ requestID: question.requestId, directory: runtime.directory }, { signal }) as Promise<SdkResult<unknown>>); } catch {}
 			}
 		}
 		try {
@@ -951,6 +992,14 @@ export class HarnessEngine {
 				case "approval-cleared":
 					runtime.approvals = runtime.approvals.filter((item) => item.requestId !== event.requestId);
 					this.emitApprovals(runtime);
+					break;
+				case "question":
+					runtime.questions = [...runtime.questions.filter((item) => item.requestId !== event.item.requestId), event.item];
+					this.questionSink(runtime.sessionId, runtime.questions);
+					break;
+				case "question-cleared":
+					runtime.questions = runtime.questions.filter((item) => item.requestId !== event.requestId);
+					this.questionSink(runtime.sessionId, runtime.questions);
 					break;
 				case "busy":
 					if (runtime.status === "starting") this.setStatus(runtime, "running");

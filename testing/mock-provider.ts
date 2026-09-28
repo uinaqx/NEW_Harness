@@ -159,6 +159,9 @@ export function startMockProvider(options: MockProviderOptions = {}): MockProvid
 			} else if (step === 0 && lastUserText.includes("读文件")) {
 				toolName = "read";
 				toolArgs = JSON.stringify({ filePath: "README.md" });
+			} else if (step === 0 && lastUserText.includes("问问题")) {
+				toolName = "question";
+				toolArgs = JSON.stringify({ questions: [{ header: "方案", question: "请选择实现方案", options: [{ label: "简洁", description: "使用简单布局" }, { label: "详细", description: "显示更多信息" }] }] });
 			} else if (step === 0 && lastUserText.includes("失败命令")) {
 				toolName = "bash";
 				toolArgs = JSON.stringify({ command: "exit 7", description: "exit non-zero" });

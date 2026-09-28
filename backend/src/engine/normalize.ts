@@ -11,7 +11,7 @@
  * stable `callID` / `partID`, so re-delivered or out-of-order events update the
  * existing node instead of creating duplicates.
  */
-import type { ToolApprovalRequestItem } from "../../../shared/types";
+import type { AgentQuestionRequestItem, ToolApprovalRequestItem } from "../../../shared/types";
 
 /** Node lifecycle mirrored from the engine's tool state machine. */
 export type ToolPhase = "pending" | "running" | "success" | "failure" | "cancelled";
@@ -55,6 +55,8 @@ export type NormalizedEvent =
 	| { kind: "usage"; inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cost?: number }
 	| { kind: "approval"; item: ToolApprovalRequestItem }
 	| { kind: "approval-cleared"; requestId: string; decision: "allow" | "reject" }
+	| { kind: "question"; item: AgentQuestionRequestItem }
+	| { kind: "question-cleared"; requestId: string }
 	| { kind: "busy" }
 	| { kind: "idle" }
 	| { kind: "turn-error"; message: string; fatal: boolean }
@@ -118,6 +120,7 @@ export class EventNormalizer {
 	private usageReported = new Map<string, { input: number; output: number; cache: number; cost: number }>();
 	/** requestIDs we have already surfaced an approval for. */
 	private seenPermissions = new Set<string>();
+	private seenQuestions = new Set<string>();
 	private changedFiles = new Set<string>();
 
 	constructor(options: NormalizerOptions) {
@@ -227,6 +230,21 @@ export class EventNormalizer {
 						},
 					},
 				});
+				break;
+			}
+			case "question.asked": {
+				const requestId = String(props.id ?? "");
+				if (!requestId || this.seenQuestions.has(requestId) || String(props.sessionID ?? this.sessionId) !== this.sessionId) break;
+				this.seenQuestions.add(requestId);
+				const questions = Array.isArray(props.questions) ? props.questions as AgentQuestionRequestItem["questions"] : [];
+				out.push({ kind: "question", item: { requestId, sessionId: this.sessionId, questions } });
+				break;
+			}
+			case "question.replied":
+			case "question.rejected": {
+				const requestId = String(props.requestID ?? props.id ?? "");
+				this.seenQuestions.delete(requestId);
+				if (requestId) out.push({ kind: "question-cleared", requestId });
 				break;
 			}
 			case "permission.replied": {

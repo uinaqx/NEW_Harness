@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Archive, ChevronDown, ChevronRight, Folder, FolderPlus, MessageCircle, MessageSquarePlus, Moon, MoreHorizontal, Pin, PinOff, Plus, Settings, Sun, Trash2, Pencil } from "lucide-react";
+import { Archive, BookOpen, ChevronDown, ChevronRight, Code2, Folder, FolderPlus, Globe2, MessageCircle, MessageSquarePlus, Moon, MoreHorizontal, Pin, PinOff, Plus, Settings, Sparkles, Sun, Terminal, Trash2, Pencil, type LucideIcon } from "lucide-react";
 import type { ChatSessionStatus, ProjectListItemPayload, SessionListItemPayload } from "@/lib/chat-schema";
 import { BrandMark } from "@/components/brand-mark";
 
@@ -17,6 +17,7 @@ interface Props {
 	onRename: (id: string, title: string) => Promise<void>;
 	onPin: (id: string, pinned: boolean) => Promise<void>;
 	onRenameProject: (id: string, name: string) => Promise<void>;
+	onProjectIcon: (id: string, icon: NonNullable<ProjectListItemPayload["icon"]>) => Promise<void>;
 	onActionError: (error: unknown) => void;
 	theme: "dark" | "light";
 	onToggleTheme: () => void;
@@ -25,10 +26,14 @@ interface Props {
 
 function folderName(path: string): string { return path.split(/[\\/]/).filter(Boolean).pop() || path; }
 
-export function Sidebar({ sessions, projects, activeId, activeWorkspace, onSelect, onNew, onNewChat, onNewProject, onOpenSettings, onDelete, onRename, onPin, onRenameProject, onActionError, theme, onToggleTheme, status }: Props) {
+const PROJECT_ICONS: Record<NonNullable<ProjectListItemPayload["icon"]>, LucideIcon> = { folder: Folder, code: Code2, globe: Globe2, terminal: Terminal, book: BookOpen, sparkles: Sparkles };
+const PROJECT_ICON_LABELS: Record<keyof typeof PROJECT_ICONS, string> = { folder: "文件夹", code: "代码", globe: "网站", terminal: "终端", book: "文档", sparkles: "创意" };
+
+export function Sidebar({ sessions, projects, activeId, activeWorkspace, onSelect, onNew, onNewChat, onNewProject, onOpenSettings, onDelete, onRename, onPin, onRenameProject, onProjectIcon, onActionError, theme, onToggleTheme, status }: Props) {
 	const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 	const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 	const [editing, setEditing] = useState<{ kind: "session" | "project"; id: string; text: string } | null>(null);
+	const [iconProject, setIconProject] = useState<string | null>(null);
 	const savingRef = useRef(false);
 	const grouped = useMemo(() => {
 		const result = new Map<string, SessionListItemPayload[]>();
@@ -99,17 +104,20 @@ export function Sidebar({ sessions, projects, activeId, activeWorkspace, onSelec
 					{projects.map((project) => {
 						const entries = (grouped.get(project.workspaceRoot.toLocaleLowerCase()) ?? []).filter((entry) => !entry.pinned);
 						const isOpen = expanded[project.id] !== false;
+						const ProjectIcon = PROJECT_ICONS[project.icon ?? "folder"];
 						return <div key={project.id} className="sidebar-project">
 							<div className="sidebar-project-head">
 								<button className="sidebar-project-toggle" onClick={() => setExpanded((value) => ({ ...value, [project.id]: !isOpen }))} title={project.workspaceRoot}>
-									{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}<Folder size={15} />
+									{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}<ProjectIcon size={15} />
 									{editing?.kind === "project" && editing.id === project.id ? null : <span>{project.name || folderName(project.workspaceRoot)}</span>}
 								</button>
+								<button className="sidebar-project-rename" onClick={() => setEditing({ kind: "project", id: project.id, text: project.name || folderName(project.workspaceRoot) })} title="重命名项目"><Pencil size={12} /></button>
+								<button className="sidebar-project-icon-select" aria-label={`选择 ${project.name || folderName(project.workspaceRoot)} 的图标`} title="更换图标" onClick={() => setIconProject(iconProject === project.id ? null : project.id)}><Sparkles size={13} /></button>
 								<button className="sidebar-project-add" onClick={() => onNew(project.workspaceRoot)} title="在此项目中新建对话"><Plus size={14} /></button>
 							</div>
+							{iconProject === project.id && <div className="project-icon-picker" role="group" aria-label="项目图标">{(Object.keys(PROJECT_ICONS) as Array<keyof typeof PROJECT_ICONS>).map((key) => { const Icon = PROJECT_ICONS[key]; return <button type="button" key={key} aria-label={PROJECT_ICON_LABELS[key]} aria-pressed={(project.icon ?? "folder") === key} onClick={() => { void onProjectIcon(project.id, key).then(() => setIconProject(null)).catch(onActionError); }}><Icon size={16} /></button>; })}</div>}
 							{editing?.kind === "project" && editing.id === project.id && <input autoFocus className="sidebar-rename project-edit" value={editing.text} onChange={(event) => setEditing({ ...editing, text: event.target.value })} onBlur={() => void saveEdit()} onKeyDown={(event) => { if (event.key === "Enter") void saveEdit(); if (event.key === "Escape") setEditing(null); }} />}
 							{isOpen && <div className="sidebar-project-chats">{entries.map(renderSession)}{entries.length === 0 && <button className="sidebar-project-empty" onClick={() => onNew(project.workspaceRoot)}>{activeWorkspace === project.workspaceRoot ? "输入消息即可开始" : "新建对话"}</button>}</div>}
-						<button className="sidebar-project-rename" onClick={() => setEditing({ kind: "project", id: project.id, text: project.name || folderName(project.workspaceRoot) })} title="重命名项目"><Pencil size={12} /></button>
 					</div>;
 					})}
 					</section>

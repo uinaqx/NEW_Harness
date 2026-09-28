@@ -9,6 +9,7 @@
 import type { ServerWebSocket } from "bun";
 import type {
 	AgentChunkEvent,
+	AgentQuestionRequestItem,
 	ChatSessionConfig,
 	ChatSessionStatus,
 	DesktopTransportEvent,
@@ -32,16 +33,17 @@ import {
 	patchSession,
 	projectIdFor,
 	renameProject,
+	setProjectIcon,
 	removeSession,
 	upsertProject,
 	upsertSession,
 } from "./sessions";
-import { currentHandshake } from "./runtime";
+import { currentHandshake, previewToken } from "./runtime";
 import { homedir } from "node:os";
 import { mkdir, readFile, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { BUILTIN_SKILLS } from "../../shared/skills";
-import { readWorkspaceFile } from "./workspace-files";
+import { readWorkspaceFile, resolveWorkspaceFile } from "./workspace-files";
 
 async function nativePicker(kind: "folder" | "files"): Promise<string[]> {
 	if (process.platform !== "win32") throw new UserFacingError("当前平台请手动填写绝对路径。");
@@ -120,6 +122,9 @@ export function bindEngine(engine: HarnessEngine): void {
 		},
 		approvals: (sessionId, approvals) => {
 			broadcastEvent("tool_approval_state", { sessionId, approvals });
+		},
+		questions: (sessionId, questions) => {
+			broadcastEvent("agent_question_state", { sessionId, questions });
 		},
 		engine: (status) => {
 			broadcastEvent("engine_state", status);
@@ -242,7 +247,10 @@ export async function dispatchCommand(req: DesktopTransportRequest): Promise<Des
 				if (typeof args.lastWorkspace === "string") patch.lastWorkspace = args.lastWorkspace;
 				if (typeof args.autoApproveEdits === "boolean") patch.autoApproveEdits = args.autoApproveEdits;
 				if (typeof args.autoApproveCommands === "boolean") patch.autoApproveCommands = args.autoApproveCommands;
+				if (typeof args.fullAccess === "boolean") patch.fullAccess = args.fullAccess;
 				if (typeof args.theme === "string") patch.theme = args.theme === "light" ? "light" : "dark";
+				if (args.fontFamily === "system" || args.fontFamily === "mono") patch.fontFamily = args.fontFamily;
+				if (args.fontSize === "small" || args.fontSize === "normal" || args.fontSize === "large") patch.fontSize = args.fontSize;
 				const saved = await saveSettings(patch);
 				if (typeof args.apiKey === "string" && args.apiKey) {
 					saveProfileKey(saved.defaultProfileId, args.apiKey);
@@ -367,6 +375,12 @@ export async function dispatchCommand(req: DesktopTransportRequest): Promise<Des
 				const project = await renameProject(String(args.projectId || ""), name);
 				return project ? respond(req, true, { project }) : respond(req, false, undefined, "项目不存在");
 			}
+			case "set_project_icon": {
+				const icon = String(args.icon || "");
+				if (!["folder", "code", "globe", "terminal", "book", "sparkles"].includes(icon)) return respond(req, false, undefined, "无效的项目图标");
+				const project = await setProjectIcon(String(args.projectId || ""), icon as "folder" | "code" | "globe" | "terminal" | "book" | "sparkles");
+				return project ? respond(req, true, { project }) : respond(req, false, undefined, "项目不存在");
+			}
 
 			case "list_sessions": {
 				const entries = await listSessions();
@@ -388,6 +402,26 @@ export async function dispatchCommand(req: DesktopTransportRequest): Promise<Des
 						lastMessage: entry.lastMessage,
 					})),
 				});
+			}
+			case "get_usage_overview": {
+				const entries = (await listSessions()).filter((item) => !item.legacy);
+				const instance = await ensureEngine();
+				const totals = { sessions: entries.length, turns: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, unavailableSessions: 0 };
+				for (let at = 0; at < entries.length; at += 4) {
+					await Promise.all(entries.slice(at, at + 4).map(async (entry) => {
+						try {
+							const messages = await instance.readMessages(entry.workspaceRoot, entry.id, 10000);
+							for (const message of messages) {
+								if (message.role !== "assistant" || !message.meta) continue;
+								if (message.meta.completedAt) totals.turns++;
+								totals.inputTokens += message.meta.inputTokens ?? 0;
+								totals.outputTokens += message.meta.outputTokens ?? 0;
+								totals.cacheReadTokens += message.meta.cacheReadTokens ?? 0;
+							}
+						} catch { totals.unavailableSessions++; }
+					}));
+				}
+				return respond(req, true, totals);
 			}
 			case "rename_session": {
 				const id = String(args.sessionId || "");
@@ -557,7 +591,27 @@ export async function dispatchCommand(req: DesktopTransportRequest): Promise<Des
 				if (!entry || entry.kind === "chat" || entry.legacy) return respond(req, false, undefined, "当前对话不能访问本地文件。");
 				const file = String(args.file || "");
 				if (!file) return respond(req, false, undefined, "请选择文件。");
-				return respond(req, true, await readWorkspaceFile(entry.workspaceRoot, file));
+				const data = await readWorkspaceFile(entry.workspaceRoot, file);
+				const handshake = currentHandshake();
+				const previewUrl = handshake && /\.(html?|svg)$/i.test(data.file)
+					? `http://127.0.0.1:${handshake.port}/workspace-preview/${previewToken}/${encodeURIComponent(entry.id)}/${data.file.split(/[\\/]/).map(encodeURIComponent).join("/")}`
+					: undefined;
+				return respond(req, true, { ...data, previewUrl });
+			}
+			case "open_workspace_file":
+			case "open_workspace_folder": {
+				const entry = await getSession(String(args.sessionId || ""));
+				if (!entry || entry.kind === "chat" || entry.legacy) return respond(req, false, undefined, "当前对话不能访问本地文件。");
+				const { target } = await resolveWorkspaceFile(entry.workspaceRoot, String(args.file || ""));
+				if (process.platform !== "win32") return respond(req, false, undefined, "此操作当前仅支持 Windows。");
+				if (req.command === "open_workspace_folder") {
+					Bun.spawn({ cmd: ["explorer.exe", dirname(target)], stdout: "ignore", stderr: "ignore", windowsHide: true });
+				} else {
+					const encodedPath = Buffer.from(target, "utf8").toString("base64");
+					const script = `$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedPath}')); Start-Process -FilePath $p`;
+					Bun.spawn({ cmd: ["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], stdout: "ignore", stderr: "ignore", windowsHide: true });
+				}
+				return respond(req, true, { opened: true });
 			}
 
 			/* ---------------- approvals ---------------- */
@@ -575,6 +629,21 @@ export async function dispatchCommand(req: DesktopTransportRequest): Promise<Des
 				if (!sessionId || !requestId) return respond(req, false, undefined, "缺少会话或授权请求 ID");
 				await engine().replyPermission(sessionId, requestId, decision);
 				return respond(req, true, { resolved: true, decision });
+			}
+			case "poll_agent_questions": {
+				const id = String(args.sessionId || "");
+				const entry = await getSession(id);
+				if (!entry || entry.kind === "chat" || entry.legacy) return respond(req, true, { sessionId: id, questions: [] });
+				return respond(req, true, { sessionId: id, questions: await engine().pendingQuestions(id, entry.workspaceRoot) as AgentQuestionRequestItem[] });
+			}
+			case "answer_agent_question": {
+				const id = String(args.sessionId || "");
+				const entry = await getSession(id);
+				if (!entry || entry.kind === "chat" || entry.legacy) return respond(req, false, undefined, "当前对话不能回答工具问题。");
+				const answers = args.answers;
+				if (!Array.isArray(answers) || !answers.length || answers.some((item) => !Array.isArray(item) || !item.length || item.some((answer) => typeof answer !== "string" || !answer.trim()))) return respond(req, false, undefined, "请为每个问题选择或填写答案。");
+				await engine().replyQuestion(id, String(args.requestId || ""), answers as string[][]);
+				return respond(req, true, { answered: true });
 			}
 
 			/* ---------------- running a turn ---------------- */

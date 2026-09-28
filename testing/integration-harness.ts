@@ -372,6 +372,9 @@ async function main() {
 		await client.invoke("rename_project", { projectId: project!.id, name: "测试项目" });
 		const renamedProjects = await client.invoke<{ projects: Array<{ name?: string }> }>("list_projects");
 		assert("projects: custom name persists", renamedProjects.projects.some((item) => item.name === "测试项目"), renamedProjects.projects);
+		await client.invoke("set_project_icon", { projectId: project!.id, icon: "globe" });
+		const iconProjects = await client.invoke<{ projects: Array<{ id: string; icon?: string }> }>("list_projects");
+		assert("projects: selected icon persists", iconProjects.projects.some((item) => item.id === project!.id && item.icon === "globe"), iconProjects.projects);
 		await client.invoke("rename_session", { sessionId, title: "自定义对话" });
 		await client.invoke("pin_session", { sessionId, pinned: true });
 		const navigation = await client.invoke<{ sessions: Array<{ id: string; title: string; pinned: boolean }> }>("list_sessions");
@@ -457,6 +460,16 @@ async function main() {
 		const editDiffs = await client.invoke<{ diffs: Array<{ file: string; additions: number; deletions: number }> }>("list_session_diffs", { sessionId, latestTurn: true });
 		assert("diff: completed edit result contains its changed file and line counts", editDiffs.diffs.some((diff) => diff.file === "README.md" && diff.additions === 1 && diff.deletions === 1) && !editDiffs.diffs.some((diff) => diff.file === "PHASE1.txt"), editDiffs.diffs);
 		const readTurn = await runPrompt("读文件", "allow", false);
+		const questionCursor = client.events.length;
+		await client.invoke("chat_session_command", { action: "send", sessionId, prompt: "问问题" });
+		const asked = await client.waitFor("agent_question_state", (payload) => String(payload.sessionId) === sessionId && Array.isArray(payload.questions) && (payload.questions as unknown[]).length > 0, 60_000, questionCursor);
+		const request = (asked.questions as Array<{ requestId: string; questions: Array<{ options: Array<{ label: string }> }> }>)[0];
+		assert("question: engine request and choices reach the UI", request.questions[0]?.options[0]?.label === "简洁", request);
+		const pendingQuestions = await client.invoke<{ questions: Array<{ requestId: string }> }>("poll_agent_questions", { sessionId });
+		assert("question: pending request survives UI refresh", pendingQuestions.questions.some((item) => item.requestId === request.requestId), pendingQuestions);
+		await client.invoke("answer_agent_question", { sessionId, requestId: request.requestId, answers: [["简洁"]] });
+		await client.waitFor("chat_event", (payload) => String(payload.sessionId) === sessionId && String(payload.stream) === "chat_done", 60_000, questionCursor);
+		assert("question: answered turn completes", true, request.requestId);
 		const readMetrics = readTurn.chunks.filter((chunk) => chunk.stream === "chat_tool_call_end").map((chunk) => metricFor(chunk.chunk));
 		assert("canvas: real read output supplies the number of lines read", readMetrics.some((metric) => (metric.readLines ?? 0) > 0), readMetrics);
 
@@ -562,8 +575,18 @@ async function main() {
 		assert("history: tool output is summarised, not dumped", roles.includes("status") && !roles.includes("tool"), roles);
 		const preview = await client.invoke<{ content: string }>("read_workspace_file", { sessionId, file: "README.md" });
 		assert("files: clicking a project path can read its current text", preview.content.length > 0, preview.content.slice(0, 80));
+		await writeFile(join(workspace, "preview.html"), '<!doctype html><link rel="stylesheet" href="preview.css"><main>成品预览</main>');
+		await writeFile(join(workspace, "preview.css"), 'main { color: red; }');
+		const htmlPreview = await client.invoke<{ previewUrl?: string }>("read_workspace_file", { sessionId, file: "preview.html" });
+		const htmlResponse = await fetch(htmlPreview.previewUrl ?? "");
+		const cssResponse = await fetch(new URL("preview.css", htmlPreview.previewUrl));
+		assert("files: HTML preview serves its page and relative assets", htmlResponse.ok && cssResponse.ok && (await htmlResponse.text()).includes("成品预览") && (await cssResponse.text()).includes("color: red"), { html: htmlResponse.status, css: cssResponse.status });
+		const previewDenied = await fetch((htmlPreview.previewUrl ?? "").replace(/workspace-preview\/[^/]+/, "workspace-preview/wrong-token"));
+		assert("files: preview refuses an invalid token", previewDenied.status === 404, previewDenied.status);
 		const blockedOutside = await client.invoke("read_workspace_file", { sessionId, file: join(dataDir, "app-settings.json") }).then(() => false).catch(() => true);
 		assert("files: preview refuses paths outside the project", blockedOutside, blockedOutside);
+		const usage = await client.invoke<{ inputTokens: number; outputTokens: number; sessions: number }>("get_usage_overview", {}, 180_000);
+		assert("personal: local usage sums actual stored assistant tokens", usage.sessions >= 1 && usage.inputTokens > 0 && usage.outputTokens > 0, usage);
 		const lastUser = transcript.messages.findLast((message) => message.role === "user");
 		const latestDiffs = await client.invoke<{ diffs: unknown[] }>("list_session_diffs", { sessionId, latestTurn: true });
 		const explicitDiffs = await client.invoke<{ diffs: unknown[] }>("list_session_diffs", { sessionId, messageId: lastUser?.id });

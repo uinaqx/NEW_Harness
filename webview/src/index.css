@@ -144,7 +144,7 @@ input, textarea { font-family: inherit; }
 
 /* ---------- 2f. Settings dialog ---------- */
 .dialog-overlay { position: fixed; inset: 0; background: #0008; display: flex; align-items: center; justify-content: center; z-index: 100; }
-.dialog { width: min(560px, 92vw); max-height: 90vh; overflow-y: auto; background: var(--popover); border: 1px solid var(--border); border-radius: 14px; padding: 22px; box-shadow: 0 20px 60px var(--harness-glow); transition: background-color 180ms, color 180ms, border-color 180ms; }
+.dialog { width: min(560px, 92vw); max-height: 90vh; overflow-y: auto; background: var(--popover); color: var(--popover-foreground); border: 1px solid var(--border); border-radius: 14px; padding: 22px; box-shadow: 0 20px 60px var(--harness-glow); transition: background-color 180ms, color 180ms, border-color 180ms; }
 .dialog h2 { margin: 0 0 4px; font-size: 16px; }
 .dialog p { margin: 0 0 16px; color: var(--muted-foreground); font-size: 12px; }
 .field { margin-bottom: 14px; }
@@ -166,8 +166,25 @@ input, textarea { font-family: inherit; }
 .harness-execution header span:first-child { display: flex; gap: 8px; align-items: center; }
 .harness-trace-track { overflow: auto; padding: 0 16px 10px 18px; min-height: 0; }
 .harness-execution header { flex-shrink: 0; }
-.harness-trace-archive { flex-shrink: 0; display: flex; gap: 18px; overflow-x: auto; padding: 3px 22px 10px; border-bottom: 1px solid var(--border); margin-bottom: 6px; scrollbar-width: thin; }
+.harness-trace-archive { flex-shrink: 0; display: flex; gap: 4px; overflow: hidden; padding: 3px 16px 10px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
 .harness-trace-archive button { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; font-size: 10px; color: var(--foreground); padding: 3px 0; }
+.harness-trace-archive button:not(.compact) { max-width: 152px; min-width: 0; flex: 1 1 152px; overflow: hidden; }
+.harness-trace-archive button:not(.compact) small { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.harness-trace-archive button.compact { width: 23px; min-width: 23px; justify-content: center; flex: 0 0 23px; }
+.harness-trace-archive button.compact .archive-number { display: none; }
+.archive-hidden { flex: 0 0 auto; align-self: center; font-size: 10px; color: var(--muted-foreground); padding-right: 3px; }
+.harness-trace-track { flex: 1 1 auto; }
+.harness-question { flex: 0 0 auto; max-height: min(75%, 300px); overflow-y: auto; padding: 12px 20px; border-top: 1px solid var(--border); background: var(--popover); font-size: 12px; }
+.harness-question > strong { display: block; margin-bottom: 9px; }
+.harness-question fieldset { border: 0; padding: 0; margin: 0 0 12px; }
+.harness-question legend { font-size: 12px; font-weight: 550; padding: 0 0 7px; }
+.question-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.question-options button { display: flex; flex-direction: column; gap: 3px; text-align: left; border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; background: var(--card); }
+.question-options button[aria-pressed="true"] { border-color: var(--ring); background: var(--surface-hover); }
+.question-options small { color: var(--muted-foreground); font-size: 10px; }
+.harness-question input { width: min(100%, 520px); margin-top: 7px; border: 1px solid var(--input); border-radius: 7px; padding: 7px 9px; color: var(--foreground); background: var(--background); }
+.harness-question > button { padding: 7px 13px; border-radius: 7px; }
+.harness-question > button:disabled { opacity: .45; cursor: not-allowed; }
 .harness-trace-archive button[aria-expanded="true"] { text-decoration: underline; text-underline-offset: 5px; }
 .harness-trace-archive small, .archive-number { color: var(--muted-foreground); font-size: 9px; }
 .code-stat { display: inline-flex; gap: 5px; font-variant-numeric: tabular-nums; font-weight: 500; white-space: nowrap; }

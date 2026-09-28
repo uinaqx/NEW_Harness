@@ -2,7 +2,7 @@ import { Brain, Check, Circle, Loader2, Terminal, X, FileText, Search, Pencil, S
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage, ChatSessionStatus } from "@/lib/chat-schema";
 import { currentTurnSteps, executionCapacity, executionDescription, executionExplanation, executionMetrics, executionOutcome, executionPayload, executionFailed, formatDuration, splitExecutionSteps } from "@/lib/execution-window";
-import type { ToolApprovalRequestItem } from "@/hooks/chat-session/types";
+import type { AgentQuestionRequestItem, ToolApprovalRequestItem } from "@/lib/chat-schema";
 
 const COLLAPSE_HOLD_MS = 1200;
 /** Hold time plus the CSS transition length (300ms) before the track is cleared. */
@@ -13,22 +13,43 @@ function StepMetrics({ step }: { step: ChatMessage }) {
 	return <>{metrics.readLines !== undefined && <span className="read-lines">读取 {metrics.readLines} 行</span>}{metrics.additions !== undefined && <span className="code-stat"><b className="code-add">+{metrics.additions}</b><b className="code-delete">−{metrics.deletions ?? 0}</b></span>}</>;
 }
 
+function QuestionCard({ request, onAnswer }: { request: AgentQuestionRequestItem; onAnswer: (id: string, answers: string[][]) => Promise<void> }) {
+	const [answers, setAnswers] = useState<string[][]>(() => request.questions.map(() => []));
+	const [custom, setCustom] = useState<Record<number, string>>({});
+	const [submitting, setSubmitting] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const complete = request.questions.every((question, index) => answers[index]?.length || (question.custom !== false && custom[index]?.trim()));
+	return <div className="harness-question" role="group" aria-label="AI 向你提问">
+		<strong>需要你的回答</strong>
+		{request.questions.map((question, index) => <fieldset key={`${request.requestId}-${index}`}><legend>{question.header || `问题 ${index + 1}`} · {question.question}</legend>
+			<div className="question-options">{question.options.map((option) => { const active = answers[index]?.includes(option.label); return <button type="button" key={option.label} aria-pressed={active} onClick={() => { setAnswers((previous) => previous.map((value, at) => at !== index ? value : question.multiple ? (active ? value.filter((item) => item !== option.label) : [...value, option.label]) : [option.label])); if (!question.multiple) setCustom((previous) => ({ ...previous, [index]: "" })); }}><span>{option.label}</span><small>{option.description}</small></button>; })}</div>
+			{question.custom !== false && <input aria-label={`${question.header || "问题"}的其他回答`} value={custom[index] ?? ""} onChange={(event) => { setCustom((previous) => ({ ...previous, [index]: event.target.value })); if (!question.multiple) setAnswers((previous) => previous.map((value, at) => at === index ? [] : value)); }} placeholder="或输入自己的回答" />}
+		</fieldset>)}
+		{error && <p role="alert">{error}</p>}
+		<button type="button" className="btn-primary" disabled={!complete || submitting} onClick={async () => { setSubmitting(true); setError(null); try { await onAnswer(request.requestId, request.questions.map((question, index) => { const choice = answers[index] ?? []; const own = custom[index]?.trim(); return own && question.custom !== false ? [...choice, own] : choice; })); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setSubmitting(false); } }}>提交回答</button>
+	</div>;
+}
+
 export function ExecutionCanvas({
 	messages,
 	status,
 	sessionId,
 	approvals,
+	questions,
 	startedAt,
 	onApprove,
 	onReject,
+	onAnswer,
 }: {
 	messages: ChatMessage[];
 	status: ChatSessionStatus;
 	sessionId: string | null;
 	approvals: ToolApprovalRequestItem[];
+	questions: AgentQuestionRequestItem[];
 	startedAt: number | null;
 	onApprove: (requestId: string) => void;
 	onReject: (requestId: string) => void;
+	onAnswer: (requestId: string, answers: string[][]) => Promise<void>;
 }) {
 	const root = useRef<HTMLDivElement>(null);
 	const archiveTrack = useRef<HTMLDivElement>(null);
@@ -38,12 +59,23 @@ export function ExecutionCanvas({
 	const [selected, setSelected] = useState<string | null>(null);
 	const [now, setNow] = useState(Date.now());
 	const [capacity, setCapacity] = useState(6);
-	const busy = ["starting", "running", "stopping"].includes(status) || approvals.length > 0;
+	const [archiveWidth, setArchiveWidth] = useState(700);
+	const busy = ["starting", "running", "stopping"].includes(status) || approvals.length > 0 || questions.length > 0;
 	const steps = currentTurnSteps(messages);
 	const { archived, current } = splitExecutionSteps(messages, capacity, approvals.map((item) => item.toolCallId));
 	const detail = steps.find((message) => message.id === selected);
 	const detailApproval = approvals.find((item) => item.toolCallId === detail?.meta?.toolCallId);
-	useEffect(() => { if (archiveTrack.current) archiveTrack.current.scrollLeft = archiveTrack.current.scrollWidth; }, [archived.length]);
+	const available = Math.max(80, archiveWidth - 32);
+	const maxVisible = Math.max(1, Math.floor((available - 42) / 27));
+	const hiddenCount = Math.max(0, archived.length - maxVisible);
+	const visibleCount = archived.length - hiddenCount;
+	const compactCount = Math.min(visibleCount, Math.max(0, Math.ceil((visibleCount * 156 - available + (hiddenCount ? 42 : 0)) / 129)));
+	useEffect(() => {
+		if (!archiveTrack.current) return;
+		const observer = new ResizeObserver(([entry]) => setArchiveWidth(entry.contentRect.width));
+		observer.observe(archiveTrack.current);
+		return () => observer.disconnect();
+	}, [archived.length > 0]);
 	useEffect(() => { if (currentTrack.current) currentTrack.current.scrollTop = currentTrack.current.scrollHeight; }, [steps.length]);
 
 	// A new session starts with an empty canvas: history is not replayed.
@@ -100,9 +132,10 @@ export function ExecutionCanvas({
 					<span>{startedAt && busy ? `已持续 ${formatDuration(now - startedAt)} · ` : ""}流程 {steps.length}</span>
 				</header>
 				{archived.length > 0 && <div ref={archiveTrack} className="harness-trace-archive" aria-label="较早的已结束流程">
-					{archived.map((step) => <button key={step.id} type="button" aria-expanded={selected === step.id} onClick={() => setSelected(selected === step.id ? null : step.id)} title={executionDescription(step)}>
-						<span className="archive-number">{String(steps.findIndex((item) => item.id === step.id) + 1).padStart(2, "0")}</span><span>{step.meta?.toolName ?? "工具"}</span><small>{executionExplanation(step)}</small><StepMetrics step={step} />
-					</button>)}
+					{hiddenCount > 0 && <span className="archive-hidden" title={`另有 ${hiddenCount} 条更早的已完成流程`}>+{hiddenCount}</span>}
+					{archived.slice(hiddenCount).map((step, index) => { const compact = index < compactCount; const name = step.meta?.toolName ?? "工具"; const Icon = step.meta?.messageKind === "reasoning" ? Brain : /read|file/i.test(name) ? FileText : /search|grep|list/i.test(name) ? Search : /write|edit|patch/i.test(name) ? Pencil : Terminal; return <button key={step.id} className={compact ? "compact" : undefined} type="button" aria-label={`${name}：${executionDescription(step)}`} aria-expanded={selected === step.id} onClick={() => setSelected(selected === step.id ? null : step.id)} title={executionDescription(step)}>
+						<Icon size={13} /><span className="archive-number">{String(steps.findIndex((item) => item.id === step.id) + 1).padStart(2, "0")}</span>{!compact && <><span>{name}</span><small>{executionExplanation(step)}</small><StepMetrics step={step} /></>}
+					</button>; })}
 				</div>}
 				<div ref={currentTrack} className="harness-trace-track" role="list" aria-label="本轮执行步骤">
 					{steps.length === 0 ? (
@@ -182,6 +215,7 @@ export function ExecutionCanvas({
 						</button>
 					</div>
 				))}
+				{questions.map((request) => <QuestionCard key={request.requestId} request={request} onAnswer={onAnswer} />)}
 			</div>
 		</section>
 	);

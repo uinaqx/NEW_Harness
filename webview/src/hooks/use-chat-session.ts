@@ -13,6 +13,7 @@ import { desktopClient } from "@/lib/desktop-client";
 import type { DesktopTransportState } from "@/lib/desktop-transport";
 import type {
 	AgentChunkEvent,
+	AgentQuestionRequestItem,
 	AppInfoPayload,
 	ChatMessage,
 	ChatSessionConfig,
@@ -51,8 +52,6 @@ export interface SettingsDraft {
 	model: string;
 	workspaceRoot: string;
 	apiKey: string;
-	autoApproveEdits: boolean;
-	autoApproveCommands: boolean;
 }
 
 export function useChatSession() {
@@ -67,6 +66,7 @@ export function useChatSession() {
 	const [runOutcome, setRunOutcome] = useState<ChatSessionStatus>("idle");
 	const [hasUsage, setHasUsage] = useState(false);
 	const [approvals, setApprovals] = useState<ToolApprovalRequestItem[]>([]);
+	const [questions, setQuestions] = useState<AgentQuestionRequestItem[]>([]);
 	const [transportState, setTransportState] = useState<DesktopTransportState>("connecting");
 	const [sessions, setSessions] = useState<SessionListItemPayload[]>([]);
 	const [projects, setProjects] = useState<ProjectListItemPayload[]>([]);
@@ -339,10 +339,15 @@ export function useChatSession() {
 			if (value.sessionId !== sessionRef.current) return;
 			setApprovals(value.approvals ?? []);
 		});
+		const offQuestions = desktopClient.subscribe("agent_question_state", (payload) => {
+			const value = payload as { sessionId: string; questions: AgentQuestionRequestItem[] };
+			if (value.sessionId === sessionRef.current) setQuestions(value.questions ?? []);
+		});
 		return () => {
 			offChat();
 			offStatus();
 			offApprovals();
+			offQuestions();
 		};
 	}, [handleChunk]);
 
@@ -388,6 +393,7 @@ export function useChatSession() {
 				setStatus("idle");
 				setConfig(null);
 				setApprovals([]);
+				setQuestions([]);
 				setDiffs([]);
 				setNodes([]);
 				setRunStartedAt(null);
@@ -402,6 +408,7 @@ export function useChatSession() {
 			setStreamingId(null);
 			streamingIdRef.current = null;
 			setApprovals([]);
+			setQuestions([]);
 			setDiffs([]);
 			setNodes([]);
 			setRunStartedAt(null);
@@ -435,6 +442,8 @@ export function useChatSession() {
 				setRunOutcome(session.session?.status ?? "idle");
 				const approvalsResult = await desktopClient.invoke<{ approvals: ToolApprovalRequestItem[] }>("poll_tool_approvals", { sessionId: id });
 				if (sessionRef.current === id) setApprovals(approvalsResult.approvals ?? []);
+				const questionResult = await desktopClient.invoke<{ questions: AgentQuestionRequestItem[] }>("poll_agent_questions", { sessionId: id });
+				if (sessionRef.current === id) setQuestions(questionResult.questions ?? []);
 			} catch (e) {
 				setError(e instanceof Error ? e.message : String(e));
 			}
@@ -474,6 +483,10 @@ export function useChatSession() {
 
 	const renameProject = useCallback(async (projectId: string, name: string) => {
 		await desktopClient.invoke("rename_project", { projectId, name });
+		await refreshSessions();
+	}, [refreshSessions]);
+	const setProjectIcon = useCallback(async (projectId: string, icon: NonNullable<ProjectListItemPayload["icon"]>) => {
+		await desktopClient.invoke("set_project_icon", { projectId, icon });
 		await refreshSessions();
 	}, [refreshSessions]);
 
@@ -571,6 +584,13 @@ export function useChatSession() {
 		}
 	}, []);
 
+	const answerQuestion = useCallback(async (requestId: string, answers: string[][]) => {
+		const target = sessionRef.current;
+		if (!target) return;
+		await desktopClient.invoke("answer_agent_question", { sessionId: target, requestId, answers });
+		setQuestions((items) => items.filter((item) => item.requestId !== requestId));
+	}, []);
+
 	/* ---------------- settings ---------------- */
 
 	const saveSettings = useCallback(
@@ -587,8 +607,6 @@ export function useChatSession() {
 				});
 				await desktopClient.invoke("save_model_settings", {
 					lastWorkspace: draft.workspaceRoot,
-					autoApproveEdits: draft.autoApproveEdits,
-					autoApproveCommands: draft.autoApproveCommands,
 				});
 				await refreshSettings();
 				return profileResult.profileId;
@@ -601,6 +619,20 @@ export function useChatSession() {
 
 	const saveTheme = useCallback(async (theme: "dark" | "light") => {
 		const result = await desktopClient.invoke<{ settings: ModelSettingsPayload }>("save_model_settings", { theme });
+		setSettings(result.settings);
+	}, []);
+
+	const setApprovalMode = useCallback(async (mode: "ask" | "auto" | "full") => {
+		const result = await desktopClient.invoke<{ settings: ModelSettingsPayload }>("save_model_settings", {
+			autoApproveEdits: mode !== "ask",
+			autoApproveCommands: mode !== "ask",
+			fullAccess: mode === "full",
+		});
+		setSettings(result.settings);
+	}, []);
+
+	const saveAppearance = useCallback(async (patch: { theme?: "dark" | "light"; fontFamily?: "system" | "mono"; fontSize?: "small" | "normal" | "large" }) => {
+		const result = await desktopClient.invoke<{ settings: ModelSettingsPayload }>("save_model_settings", patch);
 		setSettings(result.settings);
 	}, []);
 
@@ -647,7 +679,7 @@ export function useChatSession() {
 		return desktopClient.invoke<{ valid: boolean; resolved?: string; error?: string }>("validate_workspace_directory", { path }, 15_000);
 	}, []);
 
-	const isBusy = status === "starting" || status === "running" || status === "stopping" || approvals.length > 0;
+	const isBusy = status === "starting" || status === "running" || status === "stopping" || approvals.length > 0 || questions.length > 0;
 	const engineDown = !!engine && (engine.state === "failed" || engine.state === "crashed");
 
 	return useMemo(
@@ -663,6 +695,7 @@ export function useChatSession() {
 			runOutcome,
 			hasUsage,
 			approvals,
+			questions,
 			transportState,
 			sessions,
 			projects,
@@ -684,6 +717,7 @@ export function useChatSession() {
 			deleteSession,
 			createProject,
 			renameProject,
+			setProjectIcon,
 			renameSession,
 			pinSession,
 			updateSessionOptions,
@@ -691,12 +725,15 @@ export function useChatSession() {
 			pickFiles,
 			approve,
 			reject,
+			answerQuestion,
 			refreshSessions,
 			refreshEngine,
 			refreshSettings,
 			saveSettings,
 			deleteProfile,
 			saveTheme,
+			saveAppearance,
+			setApprovalMode,
 			testConnection,
 			restartEngine,
 			loadDiagnostics,
@@ -717,6 +754,7 @@ export function useChatSession() {
 			runOutcome,
 			hasUsage,
 			approvals,
+			questions,
 			transportState,
 			sessions,
 			projects,

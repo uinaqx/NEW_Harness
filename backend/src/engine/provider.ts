@@ -81,12 +81,12 @@ export function buildOpenCodeConfig({ settings, apiKey, profileKeys = {} }: Prov
 		permission: {
 			// Reads inside the workspace are allowed by default (engine default),
 			// everything that mutates or executes asks unless the user opted out.
-			edit: settings.autoApproveEdits ? "allow" : "ask",
-			bash: settings.autoApproveCommands ? "allow" : "ask",
+			edit: settings.fullAccess || settings.autoApproveEdits ? "allow" : "ask",
+			bash: settings.fullAccess || settings.autoApproveCommands ? "allow" : "ask",
 			// The workspace is described as a permission boundary, not an OS sandbox.
-			external_directory: "ask",
-			webfetch: "deny",
-			doom_loop: "ask",
+			external_directory: settings.fullAccess ? "allow" : "ask",
+			webfetch: settings.fullAccess ? "allow" : "deny",
+			doom_loop: settings.fullAccess ? "allow" : "ask",
 		},
 	};
 }

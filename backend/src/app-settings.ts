@@ -32,8 +32,11 @@ export interface AppSettings {
 	/** Permission posture. "ask" keeps the approval flow on. */
 	autoApproveEdits: boolean;
 	autoApproveCommands: boolean;
+	fullAccess: boolean;
 	/** UI preference, mirrored to the backend so it survives a reinstall. */
 	theme: "dark" | "light";
+	fontFamily: "system" | "mono";
+	fontSize: "small" | "normal" | "large";
 	/** Set once legacy data has been migrated, so migration stays idempotent. */
 	legacyMigratedAt?: number;
 }
@@ -91,7 +94,10 @@ export function defaultSettings(): AppSettings {
 		lastWorkspace: "",
 		autoApproveEdits: false,
 		autoApproveCommands: false,
+		fullAccess: false,
 		theme: "dark",
+		fontFamily: "system",
+		fontSize: "normal",
 	};
 }
 
@@ -144,7 +150,7 @@ export function normalizeBaseUrl(value: string): string {
 }
 
 export function maskSettings(settings: AppSettings, hasApiKey: boolean, apiKeyMask: string | null, profileKeys: Record<string, string> = {}) {
-	const { protocol, baseUrl, model, profiles, defaultProfileId, lastWorkspace, autoApproveEdits, autoApproveCommands, theme, legacyMigratedAt } = settings;
+	const { protocol, baseUrl, model, profiles, defaultProfileId, lastWorkspace, autoApproveEdits, autoApproveCommands, fullAccess, theme, fontFamily, fontSize, legacyMigratedAt } = settings;
 	return {
 		protocol,
 		baseUrl,
@@ -154,7 +160,10 @@ export function maskSettings(settings: AppSettings, hasApiKey: boolean, apiKeyMa
 		lastWorkspace,
 		autoApproveEdits,
 		autoApproveCommands,
+		fullAccess,
 		theme,
+		fontFamily,
+		fontSize,
 		legacyMigratedAt,
 		hasApiKey,
 		apiKeyMask,

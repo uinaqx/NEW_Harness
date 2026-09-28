@@ -9,7 +9,9 @@
 import { existsSync } from "node:fs";
 import { dirname, extname, join } from "node:path";
 import { APP_VERSION, DEV_ORIGINS, IS_DEV, LOOPBACK } from "./config";
-import { currentHandshake } from "./runtime";
+import { currentHandshake, previewToken } from "./runtime";
+import { getSession } from "./sessions";
+import { resolveWorkspaceFile } from "./workspace-files";
 import { handleMessage, registerClient, unregisterClient } from "./transport";
 
 function resolveDistDir(): string {
@@ -32,6 +34,12 @@ const MIME: Record<string, string> = {
 	".ico": "image/x-icon",
 	".woff2": "font/woff2",
 	".map": "application/json",
+	".wasm": "application/wasm",
+	".webp": "image/webp",
+	".jpg": "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif": "image/gif",
+	".woff": "font/woff",
 };
 
 /** Origins the webview may present. Tauri v2 uses tauri://localhost on Windows. */
@@ -131,6 +139,19 @@ export function startServer(): ServerHandle {
 				}
 				if (bunServer.upgrade(req)) return undefined;
 				return new Response("WebSocket upgrade failed", { status: 426 });
+			}
+
+			if (url.pathname.startsWith("/workspace-preview/")) {
+				if (req.method !== "GET") return new Response("Method not allowed", { status: 405 });
+				const match = /^\/workspace-preview\/([^/]+)\/([^/]+)\/(.+)$/.exec(url.pathname);
+				if (!match || match[1] !== previewToken) return new Response("Not found", { status: 404 });
+				try {
+					const session = await getSession(decodeURIComponent(match[2]));
+					if (!session || session.kind === "chat" || session.legacy) return new Response("Not found", { status: 404 });
+					const requested = decodeURIComponent(match[3]);
+					const { target } = await resolveWorkspaceFile(session.workspaceRoot, requested);
+					return new Response(Bun.file(target), { headers: { "content-type": MIME[extname(target).toLowerCase()] || "application/octet-stream", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+				} catch { return new Response("Not found", { status: 404 }); }
 			}
 
 			const staticRes = tryStatic(url.pathname);

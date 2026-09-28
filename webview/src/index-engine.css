@@ -112,6 +112,12 @@
 .file-viewer { position: absolute; top: var(--window-title-bar-height); right: 0; bottom: 0; width: min(760px, 70%); display: flex; flex-direction: column; background: var(--background); border-left: 1px solid var(--border); z-index: 45; box-shadow: -12px 0 32px var(--harness-glow); }
 .file-viewer header { display: flex; align-items: center; gap: 9px; padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 12px; }
 .file-viewer header strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.file-viewer header button { width: 27px; height: 27px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--muted-foreground); }
+.file-viewer header button:hover { background: var(--surface-hover); color: var(--foreground); }
+.file-view-tabs { display: flex; gap: 5px; padding: 8px 14px; border-bottom: 1px solid var(--border); }
+.file-view-tabs button { display: inline-flex; align-items: center; gap: 6px; border-radius: 7px; padding: 6px 10px; font-size: 11px; color: var(--muted-foreground); }
+.file-view-tabs button[aria-pressed="true"], .file-view-tabs button:hover { background: var(--surface-hover); color: var(--foreground); }
+.file-live-preview { flex: 1; min-height: 0; width: 100%; border: 0; background: #fff; }
 .file-viewer-message { display: flex; align-items: center; gap: 8px; padding: 8px 16px; font-size: 12px; color: var(--muted-foreground); }
 .file-viewer-code { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 12px 0; font-size: 11px; line-height: 1.75; font-family: Consolas, monospace; }
 .file-source-line { display: flex; }

@@ -8,7 +8,8 @@ import { pathToFileURL } from "node:url";
 const root = resolve(import.meta.dir, "..");
 const edge = process.env.HARNESS_BROWSER || "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 if (!existsSync(edge)) throw new Error("Set HARNESS_BROWSER to a Chromium-based browser executable.");
-const out = join(root, "delivery", "qa", "0.6.0");
+const version = (await Bun.file(join(root, "package.json")).json() as { version: string }).version;
+const out = join(root, "delivery", "qa", version);
 await mkdir(out, { recursive: true });
 const built = await Bun.build({ entrypoints: [join(root, "webview", "testing", "ui-browser-fixture.tsx")], target: "browser", minify: true });
 if (!built.success) throw new Error(built.logs.map(String).join("\n"));
@@ -17,9 +18,9 @@ const script = (await built.outputs[0].text()).replace(/<\/script/gi, "<\\/scrip
 const html = join(out, "ui.html");
 await writeFile(html, `<!doctype html><meta charset="utf-8"><style>${css}</style><div id="root"></div><script>${script}</script>`);
 const reports: unknown[] = [];
-for (const sample of [{ name: "settings", theme: "dark", width: 1280 }, { name: "trace-dark", theme: "dark", width: 1280 }, { name: "trace-light", theme: "light", width: 1280 }, { name: "trace-narrow", theme: "dark", width: 900 }]) {
+for (const sample of [{ name: "settings", theme: "dark", width: 1280 }, { name: "question", theme: "dark", width: 1280 }, { name: "trace-dark", theme: "dark", width: 1280 }, { name: "trace-light", theme: "light", width: 1280 }, { name: "trace-narrow", theme: "dark", width: 900 }]) {
   const profile = await mkdtemp(join(tmpdir(), "harness-ui-browser-"));
-  const url = `${pathToFileURL(html).href}?view=${sample.name === "settings" ? "settings" : "trace"}&theme=${sample.theme}`;
+  const url = `${pathToFileURL(html).href}?view=${sample.name === "settings" ? "settings" : sample.name === "question" ? "question" : "trace"}&theme=${sample.theme}`;
   const proc = Bun.spawn({ cmd: [edge, "--headless=new", "--disable-gpu", "--no-first-run", "--allow-file-access-from-files", `--user-data-dir=${profile}`, `--window-size=${sample.width},900`, "--virtual-time-budget=5000", "--dump-dom", `--screenshot=${join(out, sample.name + ".png")}`, url], stdout: "pipe", stderr: "pipe", windowsHide: true });
   const dom = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();
