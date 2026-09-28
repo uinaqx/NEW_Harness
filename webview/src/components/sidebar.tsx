@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Archive, BookOpen, ChevronDown, ChevronRight, Code2, Folder, FolderPlus, Globe2, MessageCircle, MessageSquarePlus, Moon, MoreHorizontal, Pin, PinOff, Plus, Settings, Sparkles, Sun, Terminal, Trash2, Pencil, type LucideIcon } from "lucide-react";
 import type { ChatSessionStatus, ProjectListItemPayload, SessionListItemPayload } from "@/lib/chat-schema";
 import { BrandMark } from "@/components/brand-mark";
+import appPackage from "../../../package.json";
 
 interface Props {
 	sessions: SessionListItemPayload[];
@@ -91,7 +92,7 @@ export function Sidebar({ sessions, projects, activeId, activeWorkspace, onSelec
 
 	return (
 		<aside className="app-sidebar">
-			<div className="sidebar-brand"><BrandMark size={28} /><strong>某科学的Agent</strong></div>
+			<div className="sidebar-brand"><BrandMark size={28} /><strong>某科学的Agent</strong><small className="sidebar-brand-version">v{appPackage.version}</small></div>
 			<nav className="sidebar-primary" aria-label="主导航">
 				<button onClick={() => onNew()}><MessageSquarePlus size={17} /> Work 新对话 <span className="sidebar-shortcut">Ctrl N</span></button>
 				<button onClick={onNewChat}><MessageCircle size={17} /> Chat 开聊</button>

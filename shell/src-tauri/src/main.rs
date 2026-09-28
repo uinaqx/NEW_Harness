@@ -550,7 +550,15 @@ fn main() {
                 None => "window.__HARNESS__ = { unavailable: true };".to_string(),
             };
 
+            // A fresh WebView profile per app version prevents Chromium from
+            // serving an older cached index.html and its previous JS bundle
+            // after an installer upgrade. Conversations/settings live in the
+            // backend data directory and are unaffected.
+            let webview_data_dir = app.path().app_local_data_dir()?.join(format!("webview-v{}", BACKEND_VERSION));
+            fs::create_dir_all(&webview_data_dir)?;
+            log_line(&log, &format!("webview profile: {}", webview_data_dir.display()));
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+				.data_directory(webview_data_dir)
 				// Let the webview receive native file drops as File objects in the composer.
 				.disable_drag_drop_handler()
                 .title("某科学的Agent")

@@ -157,6 +157,10 @@ async function main() {
 	}
 
 	const shellLog = await waitForLogLine("handshake verified", 30_000);
+	const currentVersion = (JSON.parse(await readFile(join(import.meta.dir, "..", "package.json"), "utf8")) as { version: string }).version;
+	const profileLog = await waitForLogLine(`webview-v${currentVersion}`, 30_000);
+	const profileLine = profileLog.split("\n").find((line) => line.includes("webview profile:")) ?? "";
+	assert("webview: this version uses a fresh profile instead of an older cached UI", profileLine.includes(`webview-v${currentVersion}`), profileLine);
 	assert(
 		"handshake: the shell verified version + instance identity before opening the window",
 		shellLog.includes("handshake verified"),

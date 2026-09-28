@@ -4,7 +4,14 @@ import { ChatMessages } from "./chat-messages";
 import { SettingsDialog } from "./settings-dialog";
 import { ExecutionCanvas } from "./execution-canvas";
 import { TaskResult } from "./task-result";
+import { Sidebar } from "./sidebar";
+import appPackage from "../../../package.json";
 import type { ChatMessage } from "@/lib/chat-schema";
+
+test("sidebar displays the frontend build version", () => {
+	const html = renderToStaticMarkup(<Sidebar sessions={[]} projects={[]} activeId={null} onSelect={() => {}} onNew={() => {}} onNewChat={() => {}} onNewProject={() => {}} onOpenSettings={() => {}} onDelete={async () => {}} onRename={async () => {}} onPin={async () => {}} onRenameProject={async () => {}} onProjectIcon={async () => {}} onActionError={() => {}} theme="dark" onToggleTheme={() => {}} status="idle" />);
+	expect(html).toContain(`v${appPackage.version}`);
+});
 
 test("conversation renders feedback but not tools, output, status steps or reasoning", () => {
 	const messages: ChatMessage[] = [

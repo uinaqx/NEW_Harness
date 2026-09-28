@@ -4,6 +4,7 @@
 .app { grid-template-columns: minmax(238px, 282px) minmax(0, 1fr); }
 .app-sidebar { padding: 0; position: relative; }
 .sidebar-brand { height: 54px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; font-size: 17px; letter-spacing: -.03em; }
+.sidebar-brand-version { flex: none; margin-left: auto; font-size: 10px; letter-spacing: 0; color: var(--muted-foreground); font-weight: 500; }
 .sidebar-brand-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--foreground); opacity: .5; }
 .sidebar-primary { display: flex; flex-direction: column; gap: 3px; padding: 7px 10px 22px; }
 .sidebar-primary button { width: 100%; display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 9px; font-size: 13px; font-weight: 560; text-align: left; }
