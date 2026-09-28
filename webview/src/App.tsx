@@ -11,6 +11,7 @@ import { EngineError } from "@/components/engine-error";
 import { TaskResult } from "@/components/task-result";
 import { FileViewer } from "@/components/file-viewer";
 import { FileDiff, Folder, FolderOpen, Loader2, MessageCircle, RefreshCw, Wifi, WifiOff, X } from "lucide-react";
+import type { InlineAttachment } from "@/lib/chat-schema";
 
 export function App() {
 	const api = useChatSession();
@@ -98,7 +99,7 @@ export function App() {
 
 	const handleSave = useCallback(async (draft: SettingsDraft) => api.saveSettings(draft), [api.saveSettings]);
 
-	const send = useCallback(async (prompt: string, options: { skillId?: string; attachments?: string[] } = {}) => {
+	const send = useCallback(async (prompt: string, options: { skillId?: string; attachments?: string[]; inlineAttachments?: InlineAttachment[] } = {}) => {
 		const kind = api.sessionId ? api.config?.kind ?? "work" : draftKind;
 		const workspace = kind === "chat" ? "" : (api.sessionId ? api.config?.workspaceRoot ?? "" : draftWorkspace).trim();
 		if (kind === "work" && !workspace) throw new Error("请先在输入框选择访问位置。");
@@ -107,7 +108,7 @@ export function App() {
 		if (!profile?.hasApiKey) throw new Error(`请先为“${profile?.name ?? "所选 API"}”配置 API Key。`);
 		if (!api.sessionId) await api.createSession(workspace, { kind, profileId: selectedProfileId, model: selectedModel.trim(), mode: selectedMode, goal });
 		else await api.updateSessionOptions(kind === "chat" ? { profileId: selectedProfileId, model: selectedModel.trim() } : { profileId: selectedProfileId, model: selectedModel.trim(), mode: selectedMode, goal });
-		await api.send(prompt, kind === "chat" ? {} : options);
+		await api.send(prompt, kind === "chat" ? { inlineAttachments: options.inlineAttachments } : options);
 	}, [api.sessionId, api.config?.workspaceRoot, api.config?.kind, api.settings?.profiles, api.createSession, api.updateSessionOptions, api.send, draftWorkspace, draftKind, selectedProfileId, selectedModel, selectedMode, goal]);
 
 	const chooseWorkspace = useCallback(async () => api.pickWorkspace(), [api.pickWorkspace]);
@@ -226,7 +227,7 @@ export function App() {
 				) : (
 					<>
 						<div className="app-conversation">
-							<ChatMessages messages={api.messages} status={api.status} streamingId={api.streamingId} error={api.error} showWaiting={activeKind === "chat"}>
+				<ChatMessages messages={api.messages} status={api.status} streamingId={api.streamingId} error={api.error} showWaiting={activeKind === "chat"} userAvatar={api.settings?.userAvatar} assistantAvatar={api.settings?.assistantAvatar}>
 								<TaskResult startedAt={api.runStartedAt} endedAt={api.runEndedAt} busy={api.isBusy} status={api.runOutcome} summary={api.summary} hasUsage={api.hasUsage} diffs={activeKind === "work" ? api.diffs : []} onOpenFile={openFile} onReview={() => setDiffOpen(true)} />
 							</ChatMessages>
 							{api.messages.length === 0 && <Welcome kind={activeKind} onPick={(prompt) => { void send(prompt).catch((cause: unknown) => api.setError(cause instanceof Error ? cause.message : String(cause))); }} hasWorkspace={!!draftWorkspace} onOpenSettings={() => { void chooseWorkspace().then((path) => { if (path) setDraftWorkspace(path); }).catch((cause: unknown) => api.setError(cause instanceof Error ? cause.message : String(cause))); }} />}
@@ -301,6 +302,7 @@ export function App() {
 				onValidateWorkspace={api.validateWorkspace}
 				onPickWorkspace={api.pickWorkspace}
 				onAppearanceChange={api.saveAppearance}
+				onAvatarChange={api.saveAvatar}
 			/>
 			{projectOpen && <div className="dialog-overlay" onClick={() => setProjectOpen(false)}>
 				<div className="dialog project-dialog" onClick={(event) => event.stopPropagation()}>

@@ -184,7 +184,7 @@ export function startMockProvider(options: MockProviderOptions = {}): MockProvid
 								index: 0,
 								message: {
 									role: "assistant",
-									content: null,
+									content: toolName === "write" ? "〔步骤：写入测试文件内容〕" : null,
 									tool_calls: [{ id: `call_${turn}`, type: "function", function: { name: toolName, arguments: toolArgs } }],
 								},
 								finish_reason: "tool_calls",
@@ -208,6 +208,7 @@ export function startMockProvider(options: MockProviderOptions = {}): MockProvid
 			chunks.push(sseChunk({ ...base(id, model), ...delta({ role: "assistant", content: "" }) }));
 
 			if (toolName) {
+				if (toolName === "write") for (const p of pieces("〔步骤：写入测试文件内容〕", 2)) chunks.push(sseChunk({ ...base(id, model), ...delta({ content: p }) }));
 				chunks.push(
 					sseChunk({
 						...base(id, model),

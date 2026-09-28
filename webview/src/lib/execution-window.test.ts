@@ -30,6 +30,8 @@ describe("live execution trace", () => {
 	test("uses actual tool input for the one-line explanation", () => {
 		expect(executionDescription(tool("x", "success", { command: "bun  test\n--watch" }))).toBe("阅读文件内容 · bun test --watch");
 		expect(executionDescription(tool("x", "success", {}))).toBe("阅读文件内容");
+		const intended = tool("intent");
+		expect(executionDescription({ ...intended, meta: { ...intended.meta, stepIntent: "阅读项目入口文件" } })).toBe("阅读项目入口文件");
 	});
 
 	test("retains every overflow step in chronological archive while keeping six recent rows", () => {

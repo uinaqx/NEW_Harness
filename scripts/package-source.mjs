@@ -41,6 +41,7 @@ const EXCLUDES = [
 	"shell/src-tauri/icons/StoreLogo.png",
 	"*.log",
 	"*-report.json",
+	"*report-*.json",
 	"real-model-*.json",
 	"*.tgz",
 	"*.removed",

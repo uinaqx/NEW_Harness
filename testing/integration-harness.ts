@@ -431,6 +431,7 @@ async function main() {
 			turn1.chunks.some((c) => c.stream === "chat_tool_call_start" && c.chunk.includes("toolCallId")),
 			turn1.chunks.map((c) => c.stream).slice(0, 12),
 		);
+		assert("canvas: short model-authored intent is extracted from fragmented text", turn1.chunks.some((item) => item.stream === "chat_step_intent" && item.chunk.includes("写入测试文件内容")) && !turn1.chunks.some((item) => item.stream === "chat_text" && item.chunk.includes("〔步骤：")), turn1.chunks.map((item) => item.stream));
 		assert(
 			"canvas: text streamed incrementally",
 			turn1.chunks.filter((c) => c.stream === "chat_text").length >= 1,
@@ -544,6 +545,13 @@ async function main() {
 		const chatRequest = mock.requests.at(-1);
 		assert("chat: selected API and model are used", chatRequest?.model === "mock-model-third", chatRequest?.model);
 		assert("chat: provider request advertises no tools", !Array.isArray(chatRequest?.tools) || chatRequest.tools.length === 0, chatRequest?.tools ?? "none");
+		const uploadCursor = client.events.length;
+		const uploadRequestCursor = mock.requests.length;
+		await client.invoke("chat_session_command", { action: "send", sessionId: chatId, prompt: "请阅读附件", inlineAttachments: [{ name: "note.txt", mime: "text/plain", dataUrl: `data:text/plain;base64,${Buffer.from("只读附件内容", "utf8").toString("base64")}` }] });
+		const uploadDone = await client.waitFor("chat_event", (payload) => payload.sessionId === chatId && payload.stream === "chat_done", 60_000, uploadCursor);
+		assert("chat: explicitly uploaded file is accepted without enabling tools", !String(uploadDone.chunk).includes('"reason":"error"') && !client.chunksSince(chatId, uploadCursor).some((item) => item.stream === "chat_tool_call_start"), uploadDone.chunk);
+		const uploadPayload = JSON.stringify(mock.requests.slice(uploadRequestCursor));
+		assert("chat: uploaded bytes reach the model request", uploadPayload.includes(Buffer.from("只读附件内容", "utf8").toString("base64")) || uploadPayload.includes("只读附件内容"), uploadPayload.slice(0, 300));
 		const chatWriteCursor = client.events.length;
 		await client.invoke("chat_session_command", { action: "send", sessionId: chatId, prompt: "写文件 PHASE1" });
 		await client.waitFor("chat_event", (payload) => payload.sessionId === chatId && payload.stream === "chat_done", 60_000, chatWriteCursor);

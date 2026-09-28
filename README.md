@@ -3,6 +3,8 @@
 本地个人使用的 Windows 桌面编码助手。**任务由 OpenCode 引擎执行**，Harness 负责桌面生命周期、
 配置与凭证保护、中文界面、执行画布、授权展示与文件差异。
 
+0.8.0 在切换对话后保留正在执行的画布，返回时补上期间的步骤。Work 模式的模型在调用工具前给出 5–15 字中文意图，画布直接显示；提问选项纵向排列。项目右键菜单可改名和图标；用户消息及头像显示在右侧，两种头像都可在「个人」页选择预设或上传裁剪。Work 与 Chat 均可拖入文件作为附件；Chat 附件只读。
+
 0.7.0 支持直接在画布回答模型提出的问题，执行中可自由滚动聊天；完整思考默认折叠在画布步骤详情中。较早流程在顶部随宽度压缩成图标，授权模式移到输入框左下角。设置改为「个人 / 配置 / 外观」双栏布局，支持本地 Token 统计及字体调整。项目可选图标；修改文件预览增加系统打开、打开所在文件夹，以及 HTML/SVG 沙箱预览。
 
 0.6.0 将工具步骤与思考集中在底部画布，对话区只保留反馈与结果。主轨迹最多显示六个步骤，较早的已结束步骤按顺序保留在顶部横排；每步附中文说明，read 展示实际阅读行数，edit 展示绿色新增与橙色删除行数。任务结束后显示耗时、Token 用量和本轮文件修改卡片，点击文件名可在右侧直接打开文件内容。
@@ -11,13 +13,13 @@
 
 ## 下载与使用
 
-Windows 安装包位于 [Releases](https://github.com/uinaqx/NEW_Harness/releases)。下载 `New-Harness_0.7.0_x64-setup.exe` 并运行；不需要另外安装 OpenCode、Bun 或 Node。首次启动后，打开左下角「设置 → 配置」，添加具名 API 配置，选择 OpenAI-compatible Chat Completions 或 Anthropic Messages，填写 Base URL、模型 ID 和 API Key，并单独执行「测试连接」。每个配置仅填写一个模型 ID，其他模型可添加独立配置；Key 使用 Windows DPAPI 加密保存。
+Windows 安装包位于 [Releases](https://github.com/uinaqx/NEW_Harness/releases)。下载 `New-Harness_0.8.0_x64-setup.exe` 并运行；不需要另外安装 OpenCode、Bun 或 Node。首次启动后，打开左下角「设置 → 配置」，添加具名 API 配置，选择 OpenAI-compatible Chat Completions 或 Anthropic Messages，填写 Base URL、模型 ID 和 API Key，并单独执行「测试连接」。每个配置仅填写一个模型 ID，其他模型可添加独立配置；Key 使用 Windows DPAPI 加密保存。
 
 - **Work：** 点「Work 新对话」或在项目下添加对话，在输入框选择访问位置与模型后发送任务。可查看工具执行画布、授权请求与文件差异；修改文件和执行命令默认询问。
-- **Chat：** 点「Chat 开聊」直接发送消息，不需要工作区；它不提供本地文件、命令或技能工具。Chat 对话排列在项目列表下方。
+- **Chat：** 点「Chat 开聊」直接发送消息，不需要工作区；可拖入只读附件，不提供本地文件路径访问、命令或技能工具。Chat 对话排列在项目列表下方。
 - 两种模式均可在输入框右下角切换已保存的 API 与模型。对话可重命名、置顶、删除；深色和浅色主题可随时切换。
 
-当前仅提供 Windows x64 安装包。0.7.0 的自动化验收包括 OpenCode 基础链路 21/21、模拟模型集成 83/83、单元测试 19/19、浏览器交互检查 53/53。安装版与原生窗口验收状态见 [`VALIDATION.md`](./VALIDATION.md)。
+当前仅提供 Windows x64 安装包。0.8.0 的自动化验收及安装版状态见 [`VALIDATION.md`](./VALIDATION.md)。
 
 应用显示名称与安装目录为“某科学的Agent”。为保留既有设置与对话，数据仍在 `%LOCALAPPDATA%\Harness\data`；旧版 `Harness` 安装项可能并存，清理前请先备份该目录。
 

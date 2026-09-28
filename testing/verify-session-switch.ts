@@ -1,0 +1,20 @@
+import { join, resolve } from "node:path";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
+
+const root = resolve(import.meta.dir, "..");
+const edge = process.env.HARNESS_BROWSER || "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
+const built = await Bun.build({ entrypoints: [join(root, "webview", "testing", "session-switch-fixture.tsx")], target: "browser", minify: true });
+if (!built.success) throw new Error(built.logs.map(String).join("\n"));
+const file = join(await mkdtemp(join(tmpdir(), "harness-switch-")), "test.html");
+await writeFile(file, `<div id="root"></div><script>${(await built.outputs[0].text()).replace(/<\/script/gi, "<\\/script")}</script>`);
+const profile = await mkdtemp(join(tmpdir(), "harness-switch-edge-"));
+const child = Bun.spawn({ cmd: [edge, "--headless=new", "--disable-gpu", "--no-first-run", "--allow-file-access-from-files", `--user-data-dir=${profile}`, "--virtual-time-budget=5000", "--dump-dom", pathToFileURL(file).href], stdout: "pipe", stderr: "pipe", windowsHide: true });
+const dom = await new Response(child.stdout).text();
+await child.exited;
+const match = dom.match(/<script id="ui-qa-result" type="application\/json">([\s\S]*?)<\/script>/);
+if (!match) throw new Error("session switch fixture did not finish");
+const checks = JSON.parse(match[1]) as Array<{ name: string; ok: boolean }>;
+for (const item of checks) console.log(`${item.ok ? "PASS" : "FAIL"} ${item.name}`);
+if (checks.some((item) => !item.ok)) throw new Error("session switch regression failed");

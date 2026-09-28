@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Atom, BadgeCheck, Blocks, BookOpen, Brush, Bug, Check, ChevronDown, FilePlus2, FlaskConical, Folder, FolderOpen, GitBranch, GitPullRequest, Hand, LayoutTemplate, Lightbulb, ListTodo, MessageSquareText, Palette, PencilLine, Plus, Send, Settings, Shapes, Shield, ShieldCheck, Square, Sticker, Target, TestTubeDiagonal, Workflow, X, type LucideIcon } from "lucide-react";
 import { BUILTIN_SKILLS } from "@shared/skills";
-import type { ApiProfilePayload, ProjectListItemPayload } from "@/lib/chat-schema";
+import type { ApiProfilePayload, InlineAttachment, ProjectListItemPayload } from "@/lib/chat-schema";
 
 const SKILL_ICONS: Record<string, LucideIcon> = {
 	"algorithmic-art": Atom, "brand-guidelines": Palette, "canvas-design": Shapes,
@@ -15,7 +15,7 @@ const SKILL_ICONS: Record<string, LucideIcon> = {
 };
 
 interface Props {
-	onSend: (prompt: string, options: { skillId?: string; attachments?: string[] }) => Promise<void>;
+	onSend: (prompt: string, options: { skillId?: string; attachments?: string[]; inlineAttachments?: InlineAttachment[] }) => Promise<void>;
 	onStop: () => void;
 	onOpenSettings: () => void;
 	onPickFolder: () => Promise<string | null>;
@@ -45,11 +45,15 @@ export function ChatInputBar({ onSend, onStop, onOpenSettings, onPickFolder, onP
 	const [menu, setMenu] = useState<"add" | "workspace" | "model" | "goal" | "approval" | null>(null);
 	const [goalDraft, setGoalDraft] = useState(goal);
 	const [attachments, setAttachments] = useState<string[]>([]);
+	const [inlineAttachments, setInlineAttachments] = useState<InlineAttachment[]>([]);
+	const [dragging, setDragging] = useState(false);
 	const [skillId, setSkillId] = useState<string | undefined>();
 	const [error, setError] = useState<string | null>(null);
 	const [sending, setSending] = useState(false);
 	const ref = useRef<HTMLTextAreaElement>(null);
 	const root = useRef<HTMLDivElement>(null);
+	const uploadInput = useRef<HTMLInputElement>(null);
+	const dragDepth = useRef(0);
 
 	useEffect(() => { setGoalDraft(goal); }, [goal]);
 	useEffect(() => {
@@ -69,15 +73,33 @@ export function ChatInputBar({ onSend, onStop, onOpenSettings, onPickFolder, onP
 
 	const submit = async () => {
 		const value = text.trim();
-		if (!value || busy || sending) return;
+		if ((!value && !attachments.length && !inlineAttachments.length) || busy || sending) return;
 		setSending(true);
 		setError(null);
 		try {
-			await onSend(value, { skillId, attachments });
-			setText(""); setSkillId(undefined); setAttachments([]);
+			await onSend(value || "请阅读附件并回答。", { skillId, attachments, inlineAttachments });
+			setText(""); setSkillId(undefined); setAttachments([]); setInlineAttachments([]);
 		} catch (cause) {
 			setError(cause instanceof Error ? cause.message : String(cause));
 		} finally { setSending(false); }
+	};
+	const addFiles = async (files: FileList | File[]) => {
+		const selected = Array.from(files).slice(0, Math.max(0, 8 - attachments.length - inlineAttachments.length));
+		try {
+			const uploaded = await Promise.all(selected.map(async (file): Promise<InlineAttachment> => {
+				if (file.size > 8 * 1024 * 1024) throw new Error(`${file.name} 超过 8 MB，无法上传。`);
+				const dataUrl = await new Promise<string>((resolve, reject) => {
+					const reader = new FileReader();
+					reader.onload = () => resolve(String(reader.result));
+					reader.onerror = () => reject(new Error(`${file.name} 读取失败。`));
+					reader.readAsDataURL(file);
+				});
+				return { name: file.name, mime: file.type || "application/octet-stream", dataUrl };
+			}));
+			if (inlineAttachments.reduce((sum, file) => sum + file.dataUrl.length, 0) + uploaded.reduce((sum, file) => sum + file.dataUrl.length, 0) > 27_000_000) throw new Error("本轮附件总量不能超过 20 MB。");
+			setInlineAttachments((current) => [...current, ...uploaded]);
+			setError(null);
+		} catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
 	};
 	const chooseFolder = async (asAttachment: boolean) => {
 		try {
@@ -91,11 +113,14 @@ export function ChatInputBar({ onSend, onStop, onOpenSettings, onPickFolder, onP
 	};
 
 	return (
-		<div className="composer" ref={root}>
+		<div className="composer" ref={root} data-dragging={dragging} onDragEnter={(event) => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); dragDepth.current++; setDragging(true); } }} onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }} onDragLeave={(event) => { if (event.dataTransfer.types.includes("Files")) { dragDepth.current = Math.max(0, dragDepth.current - 1); if (dragDepth.current === 0) setDragging(false); } }} onDrop={(event) => { event.preventDefault(); dragDepth.current = 0; setDragging(false); if (event.dataTransfer.files.length) void addFiles(event.dataTransfer.files); }}>
+			<input ref={uploadInput} className="visually-hidden" type="file" multiple onChange={(event) => { if (event.target.files) void addFiles(event.target.files); event.target.value = ""; }} aria-label="选择上传文件" />
+			{dragging && <div className="composer-drop-hint">松开以添加只读附件</div>}
 			<div className="composer-inner">
 				<div className="composer-box">
-					{(attachments.length > 0 || skillId) && <div className="composer-chips">
+					{(attachments.length > 0 || inlineAttachments.length > 0 || skillId) && <div className="composer-chips">
 						{attachments.map((path) => <span className="composer-chip" key={path} title={path}><FolderOpen size={12} /> {folderName(path)} <button aria-label={`移除 ${path}`} onClick={() => setAttachments((items) => items.filter((item) => item !== path))}><X size={12} /></button></span>)}
+						{inlineAttachments.map((file, index) => <span className="composer-chip" key={`${file.name}-${index}`} title={file.name}><FilePlus2 size={12} /> {file.name} <button aria-label={`移除 ${file.name}`} onClick={() => setInlineAttachments((items) => items.filter((_, at) => at !== index))}><X size={12} /></button></span>)}
 						{skillId && <span className="composer-chip"><Plus size={12} /> {BUILTIN_SKILLS.find((item) => item.id === skillId)?.label ?? skillId} <button aria-label="移除技能" onClick={() => setSkillId(undefined)}><X size={12} /></button></span>}
 					</div>}
 					<textarea ref={ref} autoFocus value={text} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submit(); } }} rows={2} placeholder={busy ? "正在回复…" : kind === "chat" ? "开始聊天…" : "描述你的任务，或输入你想修改的内容…"} disabled={busy} />
@@ -103,16 +128,17 @@ export function ChatInputBar({ onSend, onStop, onOpenSettings, onPickFolder, onP
 						{kind === "work" ? <><button className="composer-icon" title="添加文件、目标、技能" aria-expanded={menu === "add"} onClick={() => setMenu(menu === "add" ? null : "add")}><Plus size={19} /></button>
 						<button className="composer-approval" aria-label="批准规则" aria-expanded={menu === "approval"} onClick={() => setMenu(menu === "approval" ? null : "approval")} title="设置工具批准规则">{approvalMode === "ask" ? <Hand size={14} /> : approvalMode === "auto" ? <ShieldCheck size={14} /> : <Shield size={14} />}<span>{approvalMode === "ask" ? "请求批准" : approvalMode === "auto" ? "帮我批准" : "完全访问"}</span><ChevronDown size={12} /></button>
 						<button className="composer-location" title={workspace || "选择访问位置"} onClick={() => setMenu(menu === "workspace" ? null : "workspace")}><Folder size={14} /><span>{workspace ? folderName(workspace) : "选择访问位置"}</span><ChevronDown size={13} /></button>
-						{mode === "plan" && <button className="composer-plan-pill" onClick={() => onModeChange("act")} title="关闭计划模式"><Lightbulb size={13} /> 计划模式 <X size={11} /></button>}</> : <span className="composer-chat-pill"><MessageSquareText size={14} /> Chat · 仅文字</span>}
+						{mode === "plan" && <button className="composer-plan-pill" onClick={() => onModeChange("act")} title="关闭计划模式"><Lightbulb size={13} /> 计划模式 <X size={11} /></button>}</> : <><button className="composer-icon" title="上传只读附件" onClick={() => uploadInput.current?.click()}><Plus size={19} /></button><span className="composer-chat-pill"><MessageSquareText size={14} /> Chat · 只读</span></>}
 						<span className="composer-spacer" />
 						<button className="composer-model" onClick={() => setMenu(menu === "model" ? null : "model")} title="选择模型">{profiles.find((item) => item.id === profileId)?.name ? `${profiles.find((item) => item.id === profileId)?.name} · ` : ""}{model || "选择模型"}<ChevronDown size={13} /></button>
-						{busy ? <button className="composer-send stop" onClick={onStop} title="停止任务"><Square size={15} /></button> : <button className="composer-send" onClick={() => void submit()} disabled={!text.trim() || sending} title="发送"><Send size={17} /></button>}
+						{busy ? <button className="composer-send stop" onClick={onStop} title="停止任务"><Square size={15} /></button> : <button className="composer-send" onClick={() => void submit()} disabled={(!text.trim() && !attachments.length && !inlineAttachments.length) || sending} title="发送"><Send size={17} /></button>}
 					</div>
 				</div>
 				{error && <div className="composer-error" role="alert">{error}</div>}
 				{kind === "work" && menu === "add" && <div className="composer-popover add-menu">
 					<div className="popover-label">添加</div>
 					<button onClick={async () => { try { const paths = await onPickFiles(); setAttachments((current) => [...new Set([...current, ...paths])].slice(0, 8)); setMenu(null); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } }}><FilePlus2 size={17} /> 文件</button>
+					<button onClick={() => { uploadInput.current?.click(); setMenu(null); }}><FilePlus2 size={17} /> 上传只读附件</button>
 					<button onClick={() => void chooseFolder(true)}><FolderOpen size={17} /> 文件夹</button>
 					<button onClick={() => { setGoalDraft(goal); setMenu("goal"); }}><Target size={17} /> 目标 <small>{goal ? "已设置" : "设置持续追求的目标"}</small></button>
 					<button onClick={() => { onModeChange(mode === "plan" ? "act" : "plan"); setMenu(null); }}><Lightbulb size={17} /> 计划模式 <small>{mode === "plan" ? "已开启" : "先计划，再动手"}</small></button>

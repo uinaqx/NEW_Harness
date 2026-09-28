@@ -159,6 +159,7 @@ export function startServer(): ServerHandle {
 			return new Response("Not found", { status: 404 });
 		},
 		websocket: {
+			maxPayloadLength: 32 * 1024 * 1024,
 			async message(ws, message) {
 				const raw = typeof message === "string" ? message : new TextDecoder().decode(message as Uint8Array);
 				const response = await handleMessage(raw);

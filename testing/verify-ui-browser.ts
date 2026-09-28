@@ -18,9 +18,9 @@ const script = (await built.outputs[0].text()).replace(/<\/script/gi, "<\\/scrip
 const html = join(out, "ui.html");
 await writeFile(html, `<!doctype html><meta charset="utf-8"><style>${css}</style><div id="root"></div><script>${script}</script>`);
 const reports: unknown[] = [];
-for (const sample of [{ name: "settings", theme: "dark", width: 1280 }, { name: "question", theme: "dark", width: 1280 }, { name: "trace-dark", theme: "dark", width: 1280 }, { name: "trace-light", theme: "light", width: 1280 }, { name: "trace-narrow", theme: "dark", width: 900 }]) {
+for (const sample of [{ name: "settings", theme: "dark", width: 1280 }, { name: "personal", theme: "dark", width: 1280 }, { name: "upload", theme: "dark", width: 1280 }, { name: "question", theme: "dark", width: 1280 }, { name: "trace-dark", theme: "dark", width: 1280 }, { name: "trace-light", theme: "light", width: 1280 }, { name: "trace-narrow", theme: "dark", width: 900 }]) {
   const profile = await mkdtemp(join(tmpdir(), "harness-ui-browser-"));
-  const url = `${pathToFileURL(html).href}?view=${sample.name === "settings" ? "settings" : sample.name === "question" ? "question" : "trace"}&theme=${sample.theme}`;
+  const url = `${pathToFileURL(html).href}?view=${sample.name === "settings" ? "settings" : sample.name === "personal" ? "personal" : sample.name === "upload" ? "upload" : sample.name === "question" ? "question" : "trace"}&theme=${sample.theme}`;
   const proc = Bun.spawn({ cmd: [edge, "--headless=new", "--disable-gpu", "--no-first-run", "--allow-file-access-from-files", `--user-data-dir=${profile}`, `--window-size=${sample.width},900`, "--virtual-time-budget=5000", "--dump-dom", `--screenshot=${join(out, sample.name + ".png")}`, url], stdout: "pipe", stderr: "pipe", windowsHide: true });
   const dom = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();

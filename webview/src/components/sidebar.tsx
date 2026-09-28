@@ -31,7 +31,7 @@ const PROJECT_ICON_LABELS: Record<keyof typeof PROJECT_ICONS, string> = { folder
 
 export function Sidebar({ sessions, projects, activeId, activeWorkspace, onSelect, onNew, onNewChat, onNewProject, onOpenSettings, onDelete, onRename, onPin, onRenameProject, onProjectIcon, onActionError, theme, onToggleTheme, status }: Props) {
 	const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-	const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+	const [menu, setMenu] = useState<{ kind: "session" | "project"; id: string; x: number; y: number } | null>(null);
 	const [editing, setEditing] = useState<{ kind: "session" | "project"; id: string; text: string } | null>(null);
 	const [iconProject, setIconProject] = useState<string | null>(null);
 	const savingRef = useRef(false);
@@ -47,7 +47,8 @@ export function Sidebar({ sessions, projects, activeId, activeWorkspace, onSelec
 	}, [sessions]);
 	const pinned = sessions.filter((session) => session.pinned && session.kind !== "chat");
 	const chatSessions = sessions.filter((session) => session.kind === "chat").sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.updatedAt - a.updatedAt);
-	const selectedMenu = sessions.find((session) => session.id === menu?.id);
+	const selectedMenu = menu?.kind === "session" ? sessions.find((session) => session.id === menu.id) : undefined;
+	const selectedProject = menu?.kind === "project" ? projects.find((project) => project.id === menu.id) : undefined;
 
 	useEffect(() => {
 		if (!menu) return;
@@ -74,7 +75,7 @@ export function Sidebar({ sessions, projects, activeId, activeWorkspace, onSelec
 	};
 
 	const renderSession = (entry: SessionListItemPayload) => (
-		<div key={entry.id} className="sidebar-chat" data-active={entry.id === activeId} onContextMenu={(event) => { event.preventDefault(); setMenu({ id: entry.id, x: event.clientX, y: event.clientY }); }}>
+		<div key={entry.id} className="sidebar-chat" data-active={entry.id === activeId} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setIconProject(null); setMenu({ kind: "session", id: entry.id, x: event.clientX, y: event.clientY }); }}>
 			{editing?.kind === "session" && editing.id === entry.id ? (
 				<input autoFocus className="sidebar-rename" value={editing.text} onChange={(event) => setEditing({ ...editing, text: event.target.value })} onBlur={() => void saveEdit()} onKeyDown={(event) => { if (event.key === "Enter") void saveEdit(); if (event.key === "Escape") setEditing(null); }} />
 			) : (
@@ -84,7 +85,7 @@ export function Sidebar({ sessions, projects, activeId, activeWorkspace, onSelec
 					<span className="si-status" data-status={entry.id === activeId ? status : entry.status} />
 				</button>
 			)}
-			<button className="sidebar-more" aria-label={`管理 ${entry.title}`} onClick={(event) => { event.stopPropagation(); const box = event.currentTarget.getBoundingClientRect(); setMenu({ id: entry.id, x: box.right, y: box.bottom }); }}><MoreHorizontal size={15} /></button>
+			<button className="sidebar-more" aria-label={`管理 ${entry.title}`} onClick={(event) => { event.stopPropagation(); const box = event.currentTarget.getBoundingClientRect(); setIconProject(null); setMenu({ kind: "session", id: entry.id, x: box.right, y: box.bottom }); }}><MoreHorizontal size={15} /></button>
 		</div>
 	);
 
@@ -105,17 +106,14 @@ export function Sidebar({ sessions, projects, activeId, activeWorkspace, onSelec
 						const entries = (grouped.get(project.workspaceRoot.toLocaleLowerCase()) ?? []).filter((entry) => !entry.pinned);
 						const isOpen = expanded[project.id] !== false;
 						const ProjectIcon = PROJECT_ICONS[project.icon ?? "folder"];
-						return <div key={project.id} className="sidebar-project">
+						return <div key={project.id} className="sidebar-project" onContextMenu={(event) => { event.preventDefault(); setIconProject(null); setMenu({ kind: "project", id: project.id, x: event.clientX, y: event.clientY }); }}>
 							<div className="sidebar-project-head">
 								<button className="sidebar-project-toggle" onClick={() => setExpanded((value) => ({ ...value, [project.id]: !isOpen }))} title={project.workspaceRoot}>
 									{isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}<ProjectIcon size={15} />
 									{editing?.kind === "project" && editing.id === project.id ? null : <span>{project.name || folderName(project.workspaceRoot)}</span>}
 								</button>
-								<button className="sidebar-project-rename" onClick={() => setEditing({ kind: "project", id: project.id, text: project.name || folderName(project.workspaceRoot) })} title="重命名项目"><Pencil size={12} /></button>
-								<button className="sidebar-project-icon-select" aria-label={`选择 ${project.name || folderName(project.workspaceRoot)} 的图标`} title="更换图标" onClick={() => setIconProject(iconProject === project.id ? null : project.id)}><Sparkles size={13} /></button>
 								<button className="sidebar-project-add" onClick={() => onNew(project.workspaceRoot)} title="在此项目中新建对话"><Plus size={14} /></button>
 							</div>
-							{iconProject === project.id && <div className="project-icon-picker" role="group" aria-label="项目图标">{(Object.keys(PROJECT_ICONS) as Array<keyof typeof PROJECT_ICONS>).map((key) => { const Icon = PROJECT_ICONS[key]; return <button type="button" key={key} aria-label={PROJECT_ICON_LABELS[key]} aria-pressed={(project.icon ?? "folder") === key} onClick={() => { void onProjectIcon(project.id, key).then(() => setIconProject(null)).catch(onActionError); }}><Icon size={16} /></button>; })}</div>}
 							{editing?.kind === "project" && editing.id === project.id && <input autoFocus className="sidebar-rename project-edit" value={editing.text} onChange={(event) => setEditing({ ...editing, text: event.target.value })} onBlur={() => void saveEdit()} onKeyDown={(event) => { if (event.key === "Enter") void saveEdit(); if (event.key === "Escape") setEditing(null); }} />}
 							{isOpen && <div className="sidebar-project-chats">{entries.map(renderSession)}{entries.length === 0 && <button className="sidebar-project-empty" onClick={() => onNew(project.workspaceRoot)}>{activeWorkspace === project.workspaceRoot ? "输入消息即可开始" : "新建对话"}</button>}</div>}
 					</div>;
@@ -134,6 +132,11 @@ export function Sidebar({ sessions, projects, activeId, activeWorkspace, onSelec
 				<button role="menuitem" onClick={() => { setEditing({ kind: "session", id: selectedMenu.id, text: selectedMenu.title }); setMenu(null); }}><Pencil size={14} /> 重命名</button>
 				<button role="menuitem" onClick={() => { void onPin(selectedMenu.id, !selectedMenu.pinned).catch(onActionError); setMenu(null); }}>{selectedMenu.pinned ? <PinOff size={14} /> : <Pin size={14} />}{selectedMenu.pinned ? "取消置顶" : "置顶"}</button>
 				<button role="menuitem" className="danger" onClick={() => { setMenu(null); if (window.confirm(selectedMenu.legacy ? "从列表移除这条只读历史？" : "删除此对话及引擎中的记录？")) void onDelete(selectedMenu.id).catch(onActionError); }}><Trash2 size={14} /> 删除</button>
+			</div>}
+			{selectedProject && menu && <div className="sidebar-context-menu project-context-menu" style={{ left: Math.min(menu.x, window.innerWidth - 220), top: Math.min(menu.y, window.innerHeight - 205) }} onPointerDown={(event) => event.stopPropagation()} role="menu">
+				<button role="menuitem" onClick={() => { setEditing({ kind: "project", id: selectedProject.id, text: selectedProject.name || folderName(selectedProject.workspaceRoot) }); setMenu(null); }}><Pencil size={14} /> 重命名项目</button>
+				<button role="menuitem" aria-expanded={iconProject === selectedProject.id} onClick={() => setIconProject(iconProject === selectedProject.id ? null : selectedProject.id)}><Sparkles size={14} /> 更换图标 <ChevronRight size={13} /></button>
+				{iconProject === selectedProject.id && <div className="project-icon-picker context-icon-picker" role="group" aria-label="项目图标">{(Object.keys(PROJECT_ICONS) as Array<keyof typeof PROJECT_ICONS>).map((key) => { const Icon = PROJECT_ICONS[key]; return <button type="button" key={key} title={PROJECT_ICON_LABELS[key]} aria-label={PROJECT_ICON_LABELS[key]} aria-pressed={(selectedProject.icon ?? "folder") === key} onClick={() => { void onProjectIcon(selectedProject.id, key).then(() => { setIconProject(null); setMenu(null); }).catch(onActionError); }}><Icon size={16} /></button>; })}</div>}
 			</div>}
 		</aside>
 	);

@@ -18,7 +18,7 @@ test("conversation renders feedback but not tools, output, status steps or reaso
 });
 
 test("settings has left navigation, a single model input and folder picker", () => {
-	const html = renderToStaticMarkup(<SettingsDialog open mode="update" settings={null} lastWorkspace="" osProtected busyCommand={null} onClose={() => {}} onSave={async () => "p"} onDeleteProfile={async () => {}} onTest={async () => ({ ok: true, kind: "ok", message: "ok", latencyMs: 0 })} onValidateWorkspace={async () => ({ valid: true })} onPickWorkspace={async () => null} onAppearanceChange={async () => {}} />);
+	const html = renderToStaticMarkup(<SettingsDialog open mode="update" settings={null} lastWorkspace="" osProtected busyCommand={null} onClose={() => {}} onSave={async () => "p"} onDeleteProfile={async () => {}} onTest={async () => ({ ok: true, kind: "ok", message: "ok", latencyMs: 0 })} onValidateWorkspace={async () => ({ valid: true })} onPickWorkspace={async () => null} onAppearanceChange={async () => {}} onAvatarChange={async () => {}} />);
 	expect(html).toContain("模型 ID");
 	expect(html).toContain("选择文件夹");
 	expect(html).toContain("个人");

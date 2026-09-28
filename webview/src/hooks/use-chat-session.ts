@@ -23,6 +23,7 @@ import type {
 	EngineStatusPayload,
 	FileDiffEntryPayload,
 	ModelSettingsPayload,
+	InlineAttachment,
 	ProviderProtocol,
 	ProjectListItemPayload,
 	SessionListItemPayload,
@@ -83,6 +84,8 @@ export function useChatSession() {
 	const sessionRef = useRef<string | null>(null);
 	const diffsStaleRef = useRef(true);
 	const turnGenerationRef = useRef(0);
+	const backgroundRuns = useRef(new Map<string, { messages: ChatMessage[]; status: ChatSessionStatus; config: ChatSessionConfig | null; summary: ChatSummary; runStartedAt: number | null; runEndedAt: number | null; runOutcome: ChatSessionStatus; hasUsage: boolean; streamingId: string | null; reasoningId: string | null; stepIntent: string | null; events: AgentChunkEvent[]; approvals: ToolApprovalRequestItem[]; questions: AgentQuestionRequestItem[] }>());
+	const stepIntentRef = useRef<string | null>(null);
 	streamingIdRef.current = streamingId;
 	sessionRef.current = sessionId;
 
@@ -166,6 +169,7 @@ export function useChatSession() {
 		switch (event.stream) {
 			case "chat_queued_prompt_start":
 				reasoningIdRef.current = null;
+				stepIntentRef.current = null;
 				turnGenerationRef.current++;
 				setStatus("starting");
 				setRunOutcome("running");
@@ -178,6 +182,11 @@ export function useChatSession() {
 				setHasUsage(false);
 				setDiffs([]);
 				break;
+			case "chat_step_intent": {
+				const intent = parseJson<{ text?: string }>(event.chunk)?.text?.trim();
+				stepIntentRef.current = intent && Array.from(intent).length <= 15 ? intent : null;
+				break;
+			}
 			case "chat_text":
 				endReasoning();
 				setMessages((previous) => {
@@ -202,6 +211,8 @@ export function useChatSession() {
 			}
 			case "chat_tool_call_start": {
 				endReasoning();
+				const stepIntent = stepIntentRef.current;
+				stepIntentRef.current = null;
 				streamingIdRef.current = null;
 				setStreamingId(null);
 				const payload = parseJson<{ toolCallId?: string; toolName?: string; input?: unknown }>(event.chunk) ?? {};
@@ -218,6 +229,7 @@ export function useChatSession() {
 							toolName: payload.toolName,
 							hookEventName: "tool_call_start",
 							phase: "running",
+							stepIntent: stepIntent ?? undefined,
 						},
 					},
 				]);
@@ -320,12 +332,23 @@ export function useChatSession() {
 	useEffect(() => {
 		const offChat = desktopClient.subscribe("chat_event", (payload) => {
 			const event = payload as AgentChunkEvent;
-			if (event.sessionId !== sessionRef.current) return;
+			if (event.sessionId !== sessionRef.current) {
+				backgroundRuns.current.get(event.sessionId)?.events.push(event);
+				return;
+			}
 			handleChunk(event);
 		});
 		const offStatus = desktopClient.subscribe("chat_session_status", (payload) => {
 			const value = payload as { sessionId: string; status: ChatSessionStatus };
-			if (value.sessionId !== sessionRef.current) return;
+			setSessions((current) => current.map((entry) => entry.id === value.sessionId ? { ...entry, status: value.status } : entry));
+			if (value.sessionId !== sessionRef.current) {
+				const run = backgroundRuns.current.get(value.sessionId);
+				if (run) {
+					run.status = value.status;
+					if (["completed", "cancelled", "error"].includes(value.status)) { run.runOutcome = value.status; run.runEndedAt = Date.now(); }
+				}
+				return;
+			}
 			setStatus(value.status);
 			if (["completed", "cancelled", "error"].includes(value.status)) setRunOutcome(value.status);
 			if (["idle", "completed", "error", "cancelled"].includes(value.status)) {
@@ -336,12 +359,13 @@ export function useChatSession() {
 		});
 		const offApprovals = desktopClient.subscribe("tool_approval_state", (payload) => {
 			const value = payload as { sessionId: string; approvals: ToolApprovalRequestItem[] };
-			if (value.sessionId !== sessionRef.current) return;
+			if (value.sessionId !== sessionRef.current) { const run = backgroundRuns.current.get(value.sessionId); if (run) run.approvals = value.approvals ?? []; return; }
 			setApprovals(value.approvals ?? []);
 		});
 		const offQuestions = desktopClient.subscribe("agent_question_state", (payload) => {
 			const value = payload as { sessionId: string; questions: AgentQuestionRequestItem[] };
 			if (value.sessionId === sessionRef.current) setQuestions(value.questions ?? []);
+			else { const run = backgroundRuns.current.get(value.sessionId); if (run) run.questions = value.questions ?? []; }
 		});
 		return () => {
 			offChat();
@@ -385,8 +409,35 @@ export function useChatSession() {
 
 	const selectSession = useCallback(
 		async (id: string | null) => {
+			const previousId = sessionRef.current;
+			if (previousId && previousId !== id && ["starting", "running", "stopping"].includes(status)) {
+				backgroundRuns.current.set(previousId, { messages, status, config, summary, runStartedAt, runEndedAt, runOutcome, hasUsage, streamingId, reasoningId: reasoningIdRef.current, stepIntent: stepIntentRef.current, events: [], approvals, questions });
+			}
 			turnGenerationRef.current++;
 			sessionRef.current = id;
+			const cached = id ? backgroundRuns.current.get(id) : undefined;
+			if (id && cached) {
+				backgroundRuns.current.delete(id);
+				setSessionId(id);
+				setMessages(cached.messages);
+				setStatus(cached.status);
+				setConfig(cached.config);
+				setSummary(cached.summary);
+				setRunStartedAt(cached.runStartedAt);
+				setRunEndedAt(cached.runEndedAt);
+				setRunOutcome(cached.runOutcome);
+				setHasUsage(cached.hasUsage);
+				setStreamingId(cached.streamingId);
+				streamingIdRef.current = cached.streamingId;
+				reasoningIdRef.current = cached.reasoningId;
+				stepIntentRef.current = cached.stepIntent;
+				setApprovals(cached.approvals);
+				setQuestions(cached.questions);
+				setError(null);
+				for (const event of cached.events) handleChunk(event);
+				void loadDiffs(id);
+				return;
+			}
 			if (!id) {
 				setSessionId(null);
 				setMessages([]);
@@ -401,6 +452,7 @@ export function useChatSession() {
 				setSummary(EMPTY_SUMMARY);
 				setHasUsage(false);
 				reasoningIdRef.current = null;
+				stepIntentRef.current = null;
 				return;
 			}
 			setSessionId(id);
@@ -414,6 +466,7 @@ export function useChatSession() {
 			setRunStartedAt(null);
 			setRunEndedAt(null);
 			reasoningIdRef.current = null;
+			stepIntentRef.current = null;
 			setSummary(EMPTY_SUMMARY);
 			setHasUsage(false);
 			setStatus("idle");
@@ -448,7 +501,7 @@ export function useChatSession() {
 				setError(e instanceof Error ? e.message : String(e));
 			}
 		},
-		[],
+		[messages, status, config, summary, runStartedAt, runEndedAt, runOutcome, hasUsage, streamingId, approvals, questions, handleChunk, loadDiffs],
 	);
 
 	const createSession = useCallback(
@@ -517,13 +570,14 @@ export function useChatSession() {
 		return result.paths;
 	}, []);
 
-	const send = useCallback(async (prompt: string, options: { skillId?: string; attachments?: string[] } = {}) => {
+	const send = useCallback(async (prompt: string, options: { skillId?: string; attachments?: string[]; inlineAttachments?: InlineAttachment[] } = {}) => {
 		const target = sessionRef.current;
 		if (!target || !prompt.trim()) return;
 		turnGenerationRef.current++;
 		reasoningIdRef.current = null;
 		const optimisticId = makeId("msg");
-		setMessages((previous) => [...previous, { id: optimisticId, sessionId: target, role: "user", content: prompt, createdAt: Date.now() }]);
+		const attached = options.inlineAttachments?.map((file) => file.name).filter(Boolean) ?? [];
+		setMessages((previous) => [...previous, { id: optimisticId, sessionId: target, role: "user", content: attached.length ? `${prompt}\n\n附件：${attached.join("、")}` : prompt, createdAt: Date.now() }]);
 		// The transcript is re-read from the engine on the next open, so the
 		// optimistic bubble is replaced rather than duplicated.
 		setError(null);
@@ -636,6 +690,11 @@ export function useChatSession() {
 		setSettings(result.settings);
 	}, []);
 
+	const saveAvatar = useCallback(async (role: "user" | "assistant", value: string) => {
+		const result = await desktopClient.invoke<{ settings: ModelSettingsPayload }>("save_model_settings", role === "user" ? { userAvatar: value } : { assistantAvatar: value });
+		setSettings(result.settings);
+	}, []);
+
 	const testConnection = useCallback(async (draft: SettingsDraft): Promise<ConnectionTestResult> => {
 		setBusyCommand("test_connection");
 		try {
@@ -733,6 +792,7 @@ export function useChatSession() {
 			deleteProfile,
 			saveTheme,
 			saveAppearance,
+			saveAvatar,
 			setApprovalMode,
 			testConnection,
 			restartEngine,
@@ -788,6 +848,8 @@ export function useChatSession() {
 			saveSettings,
 			deleteProfile,
 			saveTheme,
+			saveAppearance,
+			saveAvatar,
 			testConnection,
 			restartEngine,
 			loadDiagnostics,

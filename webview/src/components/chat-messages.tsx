@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
-import { Loader2, AlertTriangle, UserRound } from "lucide-react";
-import { BrandMark } from "./brand-mark";
+import { Loader2, AlertTriangle } from "lucide-react";
+import { AvatarVisual } from "./avatar-visual";
 import type { ChatMessage, ChatSessionStatus } from "@/lib/chat-schema";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +10,8 @@ interface Props {
 	streamingId: string | null;
 	error: string | null;
 	showWaiting?: boolean;
+	userAvatar?: string;
+	assistantAvatar?: string;
 	children?: ReactNode;
 }
 
@@ -36,7 +38,7 @@ function renderContent(content: string) {
 	});
 }
 
-export function ChatMessages({ messages, status, streamingId, error, showWaiting = false, children }: Props) {
+export function ChatMessages({ messages, status, streamingId, error, showWaiting = false, userAvatar, assistantAvatar, children }: Props) {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const followLatest = useRef(true);
 	const isBusy = status === "starting" || status === "running" || status === "stopping";
@@ -63,11 +65,11 @@ export function ChatMessages({ messages, status, streamingId, error, showWaiting
 					const isStreaming = streamingId === m.id;
 					if (m.role === "system") return null;
 					return (
-						<div className="msg" key={m.id}>
-							<div className="msg-row">
-								<div className={cn("msg-avatar", isUser ? "user" : isError ? "tool" : "assistant")}>
-									{isUser ? <UserRound size={14} /> : isError ? <AlertTriangle size={14} /> : <BrandMark size={26} />}
-								</div>
+						<div className={cn("msg", isUser && "msg-from-user")} key={m.id}>
+							<div className={cn("msg-row", isUser && "from-user")}>
+								{!isUser && <div className={cn("msg-avatar", isError ? "tool" : "assistant")}>
+									{isError ? <AlertTriangle size={14} /> : <AvatarVisual value={assistantAvatar} size={26} />}
+								</div>}
 								<div className="msg-body">
 									<div className="msg-role">{isUser ? "用户" : isError ? "错误" : "某科学的Agent"}</div>
 									<div className={cn("msg-content", isUser ? "msg-user" : isAssistant ? "msg-assistant" : isError ? "msg-error" : "")}>
@@ -80,6 +82,7 @@ export function ChatMessages({ messages, status, streamingId, error, showWaiting
 										)}
 									</div>
 								</div>
+								{isUser && <div className="msg-avatar user"><AvatarVisual value={userAvatar} size={26} /></div>}
 							</div>
 						</div>
 					);

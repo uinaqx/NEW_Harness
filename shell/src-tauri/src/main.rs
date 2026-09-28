@@ -551,6 +551,8 @@ fn main() {
             };
 
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+				// Let the webview receive native file drops as File objects in the composer.
+				.disable_drag_drop_handler()
                 .title("某科学的Agent")
                 .inner_size(1400.0, 900.0)
                 .min_inner_size(900.0, 600.0)

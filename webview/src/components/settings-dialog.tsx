@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, CircleUserRound, FolderOpen, Loader2, Palette, Plus, Settings2, ShieldCheck, Trash2, X, XCircle } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
+import { AvatarEditor } from "@/components/avatar-editor";
 import { desktopClient } from "@/lib/desktop-client";
 import type { ConnectionTestResult, ModelSettingsPayload, ProviderProtocol } from "@/lib/chat-schema";
 import { DEFAULT_BASE_URLS, DEFAULT_MODELS, PROTOCOL_LABELS } from "@/lib/config";
@@ -20,6 +21,7 @@ interface Props {
 	onValidateWorkspace: (path: string) => Promise<{ valid: boolean; resolved?: string; error?: string }>;
 	onPickWorkspace: () => Promise<string | null>;
 	onAppearanceChange: (patch: { theme?: "dark" | "light"; fontFamily?: "system" | "mono"; fontSize?: "small" | "normal" | "large" }) => Promise<void>;
+	onAvatarChange: (role: "user" | "assistant", value: string) => Promise<void>;
 }
 
 function draftFrom(settings: ModelSettingsPayload | null, lastWorkspace: string, profileId?: string): SettingsDraft {
@@ -36,7 +38,7 @@ function draftFrom(settings: ModelSettingsPayload | null, lastWorkspace: string,
 	};
 }
 
-export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtected, busyCommand, onClose, onSave, onDeleteProfile, onTest, onValidateWorkspace, onPickWorkspace, onAppearanceChange }: Props) {
+export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtected, busyCommand, onClose, onSave, onDeleteProfile, onTest, onValidateWorkspace, onPickWorkspace, onAppearanceChange, onAvatarChange }: Props) {
 	const [draft, setDraft] = useState<SettingsDraft>(() => draftFrom(settings, lastWorkspace));
 	const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
 	const [saveState, setSaveState] = useState<{ ok: boolean; message: string } | null>(null);
@@ -94,7 +96,7 @@ export function SettingsDialog({ open, mode, settings, lastWorkspace, osProtecte
 				<div className="settings-layout">
 					<nav className="settings-navigation" aria-label="设置分类"><button aria-current={tab === "personal" ? "page" : undefined} onClick={() => setTab("personal")}><CircleUserRound size={17} /> 个人</button><button aria-current={tab === "configuration" ? "page" : undefined} onClick={() => setTab("configuration")}><Settings2 size={17} /> 配置</button><button aria-current={tab === "appearance" ? "page" : undefined} onClick={() => setTab("appearance")}><Palette size={17} /> 外观</button></nav>
 					<div className="settings-content">
-						{tab === "personal" && <section className="settings-personal"><h3>个人使用概览</h3><div className="settings-personal-hero"><BrandMark size={52} /><div><strong>本地使用者</strong><small>统计来自本机保存的 OpenCode 会话</small></div></div>{usage ? <div className="settings-stats"><div><strong>{(usage.inputTokens + usage.outputTokens + usage.cacheReadTokens).toLocaleString()}</strong><span>累计 Token</span></div><div><strong>{usage.inputTokens.toLocaleString()}</strong><span>输入</span></div><div><strong>{usage.outputTokens.toLocaleString()}</strong><span>输出</span></div><div><strong>{usage.cacheReadTokens.toLocaleString()}</strong><span>缓存读取</span></div><div><strong>{usage.turns.toLocaleString()}</strong><span>已完成回复</span></div><div><strong>{usage.sessions.toLocaleString()}</strong><span>本地会话</span></div></div> : usageError ? <p role="alert">{usageError}</p> : <p><Loader2 size={14} className="spin" /> 正在统计本地记录…</p>}{usage && usage.unavailableSessions > 0 && <p>{usage.unavailableSessions} 个会话暂时无法读取，统计值未包含它们。</p>}</section>}
+						{tab === "personal" && <section className="settings-personal"><h3>个人使用概览</h3><div className="settings-personal-hero"><BrandMark size={52} /><div><strong>本地使用者</strong><small>统计来自本机保存的 OpenCode 会话</small></div></div>{usage ? <div className="settings-stats"><div><strong>{(usage.inputTokens + usage.outputTokens + usage.cacheReadTokens).toLocaleString()}</strong><span>累计 Token</span></div><div><strong>{usage.inputTokens.toLocaleString()}</strong><span>输入</span></div><div><strong>{usage.outputTokens.toLocaleString()}</strong><span>输出</span></div><div><strong>{usage.cacheReadTokens.toLocaleString()}</strong><span>缓存读取</span></div><div><strong>{usage.turns.toLocaleString()}</strong><span>已完成回复</span></div><div><strong>{usage.sessions.toLocaleString()}</strong><span>本地会话</span></div></div> : usageError ? <p role="alert">{usageError}</p> : <p><Loader2 size={14} className="spin" /> 正在统计本地记录…</p>}{usage && usage.unavailableSessions > 0 && <p>{usage.unavailableSessions} 个会话暂时无法读取，统计值未包含它们。</p>}<h3>对话头像</h3><div className="avatar-editor-grid"><AvatarEditor label="我的头像" value={settings?.userAvatar ?? "preset:user"} onChange={(value) => onAvatarChange("user", value)} /><AvatarEditor label="Agent 头像" value={settings?.assistantAvatar ?? "preset:brand"} onChange={(value) => onAvatarChange("assistant", value)} /></div></section>}
 						{tab === "appearance" && <section className="settings-appearance"><h3>外观</h3><p>颜色和文字会即时切换，当前任务继续运行。</p><div className="field"><label>颜色主题</label><div className="segmented"><button className="seg" data-active={settings?.theme !== "light"} onClick={() => void onAppearanceChange({ theme: "dark" })}>深色</button><button className="seg" data-active={settings?.theme === "light"} onClick={() => void onAppearanceChange({ theme: "light" })}>浅色</button></div></div><div className="field"><label>界面字体</label><div className="segmented"><button className="seg" data-active={settings?.fontFamily !== "mono"} onClick={() => void onAppearanceChange({ fontFamily: "system" })}>系统字体</button><button className="seg" data-active={settings?.fontFamily === "mono"} onClick={() => void onAppearanceChange({ fontFamily: "mono" })}>等宽字体</button></div></div><div className="field"><label>文字大小</label><div className="segmented">{([ ["small", "小"], ["normal", "标准"], ["large", "大"] ] as const).map(([value, label]) => <button className="seg" key={value} data-active={(settings?.fontSize ?? "normal") === value} onClick={() => void onAppearanceChange({ fontSize: value })}>{label}</button>)}</div></div></section>}
 						{tab === "configuration" && <section className="settings-configuration"><h3>模型与工作区</h3>
 				<div className="field">

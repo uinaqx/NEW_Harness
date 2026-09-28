@@ -251,6 +251,12 @@ export async function dispatchCommand(req: DesktopTransportRequest): Promise<Des
 				if (typeof args.theme === "string") patch.theme = args.theme === "light" ? "light" : "dark";
 				if (args.fontFamily === "system" || args.fontFamily === "mono") patch.fontFamily = args.fontFamily;
 				if (args.fontSize === "small" || args.fontSize === "normal" || args.fontSize === "large") patch.fontSize = args.fontSize;
+				for (const field of ["userAvatar", "assistantAvatar"] as const) {
+					if (typeof args[field] !== "string") continue;
+					const avatar = args[field] as string;
+					if (/^preset:(user|brand|bot|spark|atom|moon)$/.test(avatar) || (/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(avatar) && avatar.length <= 500_000)) patch[field] = avatar;
+					else return respond(req, false, undefined, "头像格式无效或图片过大。");
+				}
 				const saved = await saveSettings(patch);
 				if (typeof args.apiKey === "string" && args.apiKey) {
 					saveProfileKey(saved.defaultProfileId, args.apiKey);
@@ -662,10 +668,19 @@ export async function dispatchCommand(req: DesktopTransportRequest): Promise<Des
 				}
 				if (action === "send") {
 					const prompt = String(args.prompt || "");
-					if (!prompt.trim()) return respond(req, false, undefined, "请输入内容");
-					if (entry.kind === "chat" && (args.skillId || (Array.isArray(args.attachments) && args.attachments.length))) {
-						return respond(req, false, undefined, "Chat 模式仅支持文字对话，不能使用本地文件或技能工具。");
-					}
+				if (!prompt.trim()) return respond(req, false, undefined, "请输入内容");
+				if (entry.kind === "chat" && (args.skillId || (Array.isArray(args.attachments) && args.attachments.length))) {
+					return respond(req, false, undefined, "Chat 模式不能使用本地路径或技能工具；请直接上传只读附件。");
+				}
+				const inlineAttachments = Array.isArray(args.inlineAttachments) ? args.inlineAttachments.slice(0, 8).map((item: unknown) => {
+					const file = item as Record<string, unknown>;
+					const name = String(file?.name ?? "").trim().slice(0, 160);
+					const mime = String(file?.mime ?? "application/octet-stream").trim().slice(0, 100);
+					const dataUrl = String(file?.dataUrl ?? "");
+					if (!name || !/^data:[\w.+-]+\/[\w.+-]+;base64,[A-Za-z0-9+/=]+$/.test(dataUrl) || dataUrl.length > 11_000_000) throw new Error("上传文件无效或超过 8 MB。请重新选择文件。");
+					return { name, mime, dataUrl };
+				}) : [];
+				if (inlineAttachments.reduce((size, file) => size + file.dataUrl.length, 0) > 27_000_000) throw new Error("本轮附件总量不能超过 20 MB。");
 					const skillId = typeof args.skillId === "string" && BUILTIN_SKILLS.some((item) => item.id === args.skillId) ? args.skillId : undefined;
 					const attachments: string[] = [];
 					if (Array.isArray(args.attachments)) {
@@ -684,7 +699,7 @@ export async function dispatchCommand(req: DesktopTransportRequest): Promise<Des
 					instance.updateCredentials(settings, apiKey, profileKeys);
 					await instance.prompt(sessionId, entry.workspaceRoot, prompt, {
 						kind: entry.kind ?? "work", profileId, model: entry.model || profile.models[0],
-						mode: entry.mode, goal: entry.goal, skillId, attachments,
+						mode: entry.mode, goal: entry.goal, skillId, attachments, inlineAttachments,
 					});
 					await patchSession(sessionId, {
 						updatedAt: Date.now(),

@@ -37,6 +37,8 @@ export interface AppSettings {
 	theme: "dark" | "light";
 	fontFamily: "system" | "mono";
 	fontSize: "small" | "normal" | "large";
+	userAvatar: string;
+	assistantAvatar: string;
 	/** Set once legacy data has been migrated, so migration stays idempotent. */
 	legacyMigratedAt?: number;
 }
@@ -98,6 +100,8 @@ export function defaultSettings(): AppSettings {
 		theme: "dark",
 		fontFamily: "system",
 		fontSize: "normal",
+		userAvatar: "preset:user",
+		assistantAvatar: "preset:brand",
 	};
 }
 
@@ -150,7 +154,7 @@ export function normalizeBaseUrl(value: string): string {
 }
 
 export function maskSettings(settings: AppSettings, hasApiKey: boolean, apiKeyMask: string | null, profileKeys: Record<string, string> = {}) {
-	const { protocol, baseUrl, model, profiles, defaultProfileId, lastWorkspace, autoApproveEdits, autoApproveCommands, fullAccess, theme, fontFamily, fontSize, legacyMigratedAt } = settings;
+	const { protocol, baseUrl, model, profiles, defaultProfileId, lastWorkspace, autoApproveEdits, autoApproveCommands, fullAccess, theme, fontFamily, fontSize, userAvatar, assistantAvatar, legacyMigratedAt } = settings;
 	return {
 		protocol,
 		baseUrl,
@@ -164,6 +168,8 @@ export function maskSettings(settings: AppSettings, hasApiKey: boolean, apiKeyMa
 		theme,
 		fontFamily,
 		fontSize,
+		userAvatar,
+		assistantAvatar,
 		legacyMigratedAt,
 		hasApiKey,
 		apiKeyMask,

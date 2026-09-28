@@ -22,6 +22,8 @@ export type ChatMessageRole =
 	| "error";
 
 export interface ChatMessageMeta {
+	/** A short model-authored Chinese explanation for the execution trace. */
+	stepIntent?: string;
 	stream?: "stdout" | "stderr";
 	toolName?: string;
 	durationMs?: number;
@@ -159,6 +161,13 @@ export interface AgentChunkEvent {
 	boot?: string;
 }
 
+/** File explicitly dropped or selected by the user; never grants filesystem tools. */
+export interface InlineAttachment {
+	name: string;
+	mime: string;
+	dataUrl: string;
+}
+
 export interface ToolApprovalRequestItem {
 	requestId: string;
 	sessionId: string;
@@ -273,6 +282,8 @@ export interface ModelSettingsPayload {
 	theme: "dark" | "light";
 	fontFamily: "system" | "mono";
 	fontSize: "small" | "normal" | "large";
+	userAvatar: string;
+	assistantAvatar: string;
 	legacyMigratedAt?: number;
 	/** Always empty: the key never travels to the webview. */
 	apiKey: "";

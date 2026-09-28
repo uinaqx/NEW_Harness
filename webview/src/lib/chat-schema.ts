@@ -9,6 +9,7 @@ export type {
 	ChatSummary,
 	SessionRecord,
 	AgentChunkEvent,
+	InlineAttachment,
 	ToolApprovalRequestItem,
 	AgentQuestionRequestItem,
 	ProcessContext,

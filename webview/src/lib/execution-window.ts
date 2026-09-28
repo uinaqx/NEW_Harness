@@ -58,6 +58,7 @@ export function pruneExecutionMessages(messages: ChatMessage[], capacity: number
 
 /** A short, safe label derived from the engine's real input, for the trace row. */
 export function executionDescription(message: ChatMessage): string {
+	if (message.meta?.stepIntent) return message.meta.stepIntent;
 	const payload = executionPayload(message);
 	const input = payload.input;
 	if (input && typeof input === "object" && !Array.isArray(input)) {
