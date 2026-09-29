@@ -542,6 +542,10 @@ async function main() {
 		const chatCursor = client.events.length;
 		await client.invoke("chat_session_command", { action: "send", sessionId: chatId, prompt: "普通问候" });
 		await client.waitFor("chat_event", (payload) => payload.sessionId === chatId && payload.stream === "chat_done", 60_000, chatCursor);
+		const chatHistory = await client.invoke<{ messages: ChatMessage[] }>("read_session_messages", { sessionId: chatId });
+		assert("chat: final answer is readable immediately after completion", chatHistory.messages.some((item) => item.role === "assistant" && item.content.trim().length > 0), chatHistory.messages.map((item) => ({ role: item.role, content: item.content.slice(0, 80) })));
+		const titledChat = await client.invoke<{ sessions: Array<{ id: string; title: string }> }>("list_sessions");
+		assert("chat: first user question becomes the conversation title", titledChat.sessions.some((item) => item.id === chatId && item.title === "普通问候"), titledChat.sessions.filter((item) => item.id === chatId));
 		const chatRequest = mock.requests.at(-1);
 		assert("chat: selected API and model are used", chatRequest?.model === "mock-model-third", chatRequest?.model);
 		assert("chat: provider request advertises no tools", !Array.isArray(chatRequest?.tools) || chatRequest.tools.length === 0, chatRequest?.tools ?? "none");
@@ -552,6 +556,13 @@ async function main() {
 		assert("chat: explicitly uploaded file is accepted without enabling tools", !String(uploadDone.chunk).includes('"reason":"error"') && !client.chunksSince(chatId, uploadCursor).some((item) => item.stream === "chat_tool_call_start"), uploadDone.chunk);
 		const uploadPayload = JSON.stringify(mock.requests.slice(uploadRequestCursor));
 		assert("chat: uploaded bytes reach the model request", uploadPayload.includes(Buffer.from("只读附件内容", "utf8").toString("base64")) || uploadPayload.includes("只读附件内容"), uploadPayload.slice(0, 300));
+		const docxBytes = await readFile(join(import.meta.dir, "..", "backend", "src", "fixtures", "sample.docx"));
+		const docxRequestCursor = mock.requests.length;
+		const docxCursor = client.events.length;
+		await client.invoke("chat_session_command", { action: "send", sessionId: chatId, prompt: "查看 Word 附件", inlineAttachments: [{ name: "说明.docx", mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", dataUrl: `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${docxBytes.toString("base64")}` }] });
+		const docxDone = await client.waitFor("chat_event", (payload) => payload.sessionId === chatId && payload.stream === "chat_done", 60_000, docxCursor);
+		const docxPayload = JSON.stringify(mock.requests.slice(docxRequestCursor));
+		assert("chat: DOCX text reaches the provider without unsupported media type", !String(docxDone.chunk).includes('"reason":"error"') && docxPayload.includes("附件内容可以被模型阅读"), { done: docxDone.chunk, textFound: docxPayload.includes("附件内容可以被模型阅读") });
 		const chatWriteCursor = client.events.length;
 		await client.invoke("chat_session_command", { action: "send", sessionId: chatId, prompt: "写文件 PHASE1" });
 		await client.waitFor("chat_event", (payload) => payload.sessionId === chatId && payload.stream === "chat_done", 60_000, chatWriteCursor);

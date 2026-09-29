@@ -82,6 +82,7 @@ export function useChatSession() {
 	const streamingIdRef = useRef<string | null>(null);
 	const reasoningIdRef = useRef<string | null>(null);
 	const sessionRef = useRef<string | null>(null);
+	const activeKindRef = useRef<"work" | "chat">("work");
 	const diffsStaleRef = useRef(true);
 	const turnGenerationRef = useRef(0);
 	const backgroundRuns = useRef(new Map<string, { messages: ChatMessage[]; status: ChatSessionStatus; config: ChatSessionConfig | null; summary: ChatSummary; runStartedAt: number | null; runEndedAt: number | null; runOutcome: ChatSessionStatus; hasUsage: boolean; streamingId: string | null; reasoningId: string | null; stepIntent: string | null; events: AgentChunkEvent[]; approvals: ToolApprovalRequestItem[]; questions: AgentQuestionRequestItem[] }>());
@@ -185,6 +186,11 @@ export function useChatSession() {
 			case "chat_step_intent": {
 				const intent = parseJson<{ text?: string }>(event.chunk)?.text?.trim();
 				stepIntentRef.current = intent && Array.from(intent).length <= 15 ? intent : null;
+				if (stepIntentRef.current) setMessages((previous) => {
+					const turnStart = previous.findLastIndex((message) => message.role === "user");
+					const index = previous.findLastIndex((message, at) => at > turnStart && message.meta?.messageKind === "reasoning" && !message.meta?.stepIntent);
+					return index < 0 ? previous : previous.map((message, at) => at === index ? { ...message, meta: { ...message.meta, stepIntent: stepIntentRef.current ?? undefined } } : message);
+				});
 				break;
 			}
 			case "chat_text":
@@ -201,6 +207,15 @@ export function useChatSession() {
 			case "chat_reasoning": {
 				const parsed = parseJson<{ text?: string }>(event.chunk);
 				if (!parsed?.text) break;
+				if (activeKindRef.current === "chat") {
+					const id = streamingIdRef.current ?? makeId("msg");
+					streamingIdRef.current = id;
+					setStreamingId(id);
+					setMessages((previous) => previous.some((message) => message.id === id)
+						? previous.map((message) => message.id === id ? { ...message, reasoning: (message.reasoning ?? "") + parsed.text } : message)
+						: [...previous, { id, sessionId: event.sessionId, role: "assistant" as const, content: "", reasoning: parsed.text, createdAt: event.ts }]);
+					break;
+				}
 				const id = reasoningIdRef.current ?? makeId("reasoning");
 				reasoningIdRef.current = id;
 				setMessages((previous) => {
@@ -308,7 +323,7 @@ export function useChatSession() {
 				const payload = parseJson<{ title?: string }>(event.chunk);
 				if (!payload?.title) break;
 				const title = payload.title;
-			setSessions((current) => current.map((entry) => (entry.id === event.sessionId && !entry.customTitle ? { ...entry, title } : entry)));
+			setSessions((current) => current.map((entry) => (entry.id === event.sessionId && entry.kind !== "chat" && !entry.customTitle ? { ...entry, title } : entry)));
 				break;
 			}
 			case "chat_files_changed":
@@ -322,6 +337,23 @@ export function useChatSession() {
 				if (payload?.reason === "error" && payload.text) setError(payload.text);
 				setStreamingId(null);
 				streamingIdRef.current = null;
+				if (activeKindRef.current === "chat" && payload?.reason !== "error") {
+					const generation = turnGenerationRef.current;
+					void (async () => {
+						for (const delay of [100, 350, 900, 1500]) {
+							await new Promise((resolve) => setTimeout(resolve, delay));
+							if (sessionRef.current !== event.sessionId || turnGenerationRef.current !== generation) return;
+							try {
+								const result = await desktopClient.invoke<{ messages: ChatMessage[] }>("read_session_messages", { sessionId: event.sessionId, maxMessages: 1000 });
+								const history = result.messages ?? [];
+								const lastUser = history.findLastIndex((message) => message.role === "user");
+								if (!history.slice(lastUser + 1).some((message) => message.role === "assistant" && message.content.trim())) continue;
+								if (sessionRef.current === event.sessionId && turnGenerationRef.current === generation) setMessages(history);
+								return;
+							} catch { /* the engine can still be finalising its history */ }
+						}
+					})();
+				}
 				break;
 			}
 			default:
@@ -422,6 +454,7 @@ export function useChatSession() {
 				setMessages(cached.messages);
 				setStatus(cached.status);
 				setConfig(cached.config);
+				activeKindRef.current = cached.config?.kind ?? "work";
 				setSummary(cached.summary);
 				setRunStartedAt(cached.runStartedAt);
 				setRunEndedAt(cached.runEndedAt);
@@ -443,6 +476,7 @@ export function useChatSession() {
 				setMessages([]);
 				setStatus("idle");
 				setConfig(null);
+				activeKindRef.current = "work";
 				setApprovals([]);
 				setQuestions([]);
 				setDiffs([]);
@@ -491,6 +525,7 @@ export function useChatSession() {
 				});
 				if (sessionRef.current !== id) return;
 				setConfig(session.session?.config ?? null);
+				activeKindRef.current = session.session?.config?.kind ?? "work";
 				setStatus(session.session?.status ?? "idle");
 				setRunOutcome(session.session?.status ?? "idle");
 				const approvalsResult = await desktopClient.invoke<{ approvals: ToolApprovalRequestItem[] }>("poll_tool_approvals", { sessionId: id });
@@ -506,6 +541,7 @@ export function useChatSession() {
 
 	const createSession = useCallback(
 		async (workspaceRoot: string, options: { kind?: "work" | "chat"; profileId?: string; model?: string; mode?: "act" | "plan"; goal?: string } = {}) => {
+			activeKindRef.current = options.kind ?? "work";
 			setBusyCommand("create_session");
 			try {
 				const result = await desktopClient.invoke<{ session: { id: string } }>("create_session", { workspaceRoot, ...options });
@@ -590,6 +626,7 @@ export function useChatSession() {
 		setDiffs([]);
 		try {
 			await desktopClient.invoke("chat_session_command", { action: "send", sessionId: target, prompt, ...options }, null);
+			await refreshSessions();
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e));
 			setStatus("error");
@@ -598,7 +635,7 @@ export function useChatSession() {
 			setMessages((previous) => previous.filter((message) => message.id !== optimisticId));
 			throw e;
 		}
-	}, []);
+	}, [refreshSessions]);
 
 	const stop = useCallback(async () => {
 		const target = sessionRef.current;

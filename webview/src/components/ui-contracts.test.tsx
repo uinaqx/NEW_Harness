@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChatMessages } from "./chat-messages";
 import { SettingsDialog } from "./settings-dialog";
-import { ExecutionCanvas } from "./execution-canvas";
+import { ExecutionCanvas, QuestionDialog } from "./execution-canvas";
 import { TaskResult } from "./task-result";
 import { Sidebar } from "./sidebar";
 import appPackage from "../../../package.json";
@@ -22,6 +22,15 @@ test("conversation renders feedback but not tools, output, status steps or reaso
 	const html = renderToStaticMarkup(<ChatMessages messages={messages} status="completed" streamingId={null} error={null} />);
 	expect(html).toContain("任务反馈");
 	for (const text of ["隐藏思考", "隐藏工具参数", "隐藏工具输出", "隐藏步骤摘要"]) expect(html).not.toContain(text);
+});
+
+test("Chat hides reasoning until its disclosure is opened", () => {
+	const messages: ChatMessage[] = [{ id: "answer", sessionId: "s", role: "assistant", content: "<think>内部推理</think>最终回答", reasoning: "模型思考", createdAt: 1 }];
+	const html = renderToStaticMarkup(<ChatMessages messages={messages} status="completed" streamingId={null} error={null} showReasoning />);
+	expect(html).toContain("最终回答");
+	expect(html).toContain("查看思考内容");
+	expect(html).toContain("<details");
+	expect(html).not.toContain("<details open");
 });
 
 test("settings has left navigation, a single model input and folder picker", () => {
@@ -45,7 +54,11 @@ test("canvas retains overflow above the six-row main trace and displays real lin
 });
 
 test("question tool renders answer choices and a submit action", () => {
-	const html = renderToStaticMarkup(<ExecutionCanvas messages={[]} status="running" sessionId="s" approvals={[]} questions={[{ requestId: "q", sessionId: "s", questions: [{ header: "风格", question: "要什么风格？", options: [{ label: "简洁", description: "单色" }], custom: true }] }]} startedAt={1} onApprove={() => {}} onReject={() => {}} onAnswer={async () => {}} />);
+	const request = { requestId: "q", sessionId: "s", questions: [{ header: "风格", question: "要什么风格？", options: [{ label: "简洁", description: "单色" }], custom: true }] };
+	const canvas = renderToStaticMarkup(<ExecutionCanvas messages={[]} status="running" sessionId="s" approvals={[]} questions={[request]} startedAt={1} onApprove={() => {}} onReject={() => {}} onAnswer={async () => {}} />);
+	const html = renderToStaticMarkup(<QuestionDialog request={request} onAnswer={async () => {}} />);
+	expect(canvas).not.toContain("要什么风格？");
+	expect(html).toContain('role="dialog"');
 	expect(html).toContain("要什么风格？");
 	expect(html).toContain("简洁");
 	expect(html).toContain("提交回答");

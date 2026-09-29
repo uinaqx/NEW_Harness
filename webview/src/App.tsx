@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useChatSession, type SettingsDraft } from "@/hooks/use-chat-session";
 import { Sidebar } from "@/components/sidebar";
-import { ExecutionCanvas } from "@/components/execution-canvas";
+import { ExecutionCanvas, QuestionDialog } from "@/components/execution-canvas";
 import { ChatMessages } from "@/components/chat-messages";
 import { ChatInputBar } from "@/components/chat-input-bar";
 import { Welcome } from "@/components/welcome";
@@ -227,7 +227,7 @@ export function App() {
 				) : (
 					<>
 						<div className="app-conversation">
-				<ChatMessages messages={api.messages} status={api.status} streamingId={api.streamingId} error={api.error} showWaiting={activeKind === "chat"} userAvatar={api.settings?.userAvatar} assistantAvatar={api.settings?.assistantAvatar}>
+				<ChatMessages messages={api.messages} status={api.status} streamingId={api.streamingId} error={api.error} showWaiting={activeKind === "chat"} showReasoning={activeKind === "chat"} userAvatar={api.settings?.userAvatar} assistantAvatar={api.settings?.assistantAvatar}>
 								<TaskResult startedAt={api.runStartedAt} endedAt={api.runEndedAt} busy={api.isBusy} status={api.runOutcome} summary={api.summary} hasUsage={api.hasUsage} diffs={activeKind === "work" ? api.diffs : []} onOpenFile={openFile} onReview={() => setDiffOpen(true)} />
 							</ChatMessages>
 							{api.messages.length === 0 && <Welcome kind={activeKind} onPick={(prompt) => { void send(prompt).catch((cause: unknown) => api.setError(cause instanceof Error ? cause.message : String(cause))); }} hasWorkspace={!!draftWorkspace} onOpenSettings={() => { void chooseWorkspace().then((path) => { if (path) setDraftWorkspace(path); }).catch((cause: unknown) => api.setError(cause instanceof Error ? cause.message : String(cause))); }} />}
@@ -285,7 +285,8 @@ export function App() {
 						}
 					}}
 				/>
-				{fileView && <FileViewer sessionId={fileView.sessionId} file={fileView.file} onClose={() => setFileView(null)} />}
+			{fileView && <FileViewer sessionId={fileView.sessionId} file={fileView.file} onClose={() => setFileView(null)} />}
+			{api.questions.map((request) => <QuestionDialog key={request.requestId} request={request} onAnswer={api.answerQuestion} />)}
 			</main>
 
 			<SettingsDialog

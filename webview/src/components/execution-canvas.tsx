@@ -13,13 +13,13 @@ function StepMetrics({ step }: { step: ChatMessage }) {
 	return <>{metrics.readLines !== undefined && <span className="read-lines">读取 {metrics.readLines} 行</span>}{metrics.additions !== undefined && <span className="code-stat"><b className="code-add">+{metrics.additions}</b><b className="code-delete">−{metrics.deletions ?? 0}</b></span>}</>;
 }
 
-function QuestionCard({ request, onAnswer }: { request: AgentQuestionRequestItem; onAnswer: (id: string, answers: string[][]) => Promise<void> }) {
+export function QuestionDialog({ request, onAnswer }: { request: AgentQuestionRequestItem; onAnswer: (id: string, answers: string[][]) => Promise<void> }) {
 	const [answers, setAnswers] = useState<string[][]>(() => request.questions.map(() => []));
 	const [custom, setCustom] = useState<Record<number, string>>({});
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const complete = request.questions.every((question, index) => answers[index]?.length || (question.custom !== false && custom[index]?.trim()));
-	return <div className="harness-question" role="group" aria-label="AI 向你提问">
+	return <div className="question-dialog-overlay"><div className="harness-question question-dialog" role="dialog" aria-modal="true" aria-label="AI 向你提问">
 		<strong>需要你的回答</strong>
 		{request.questions.map((question, index) => <fieldset key={`${request.requestId}-${index}`}><legend>{question.header || `问题 ${index + 1}`} · {question.question}</legend>
 			<div className="question-options">{question.options.map((option) => { const active = answers[index]?.includes(option.label); return <button type="button" key={option.label} aria-pressed={active} onClick={() => { setAnswers((previous) => previous.map((value, at) => at !== index ? value : question.multiple ? (active ? value.filter((item) => item !== option.label) : [...value, option.label]) : [option.label])); if (!question.multiple) setCustom((previous) => ({ ...previous, [index]: "" })); }}><span>{option.label}</span><small>{option.description}</small></button>; })}</div>
@@ -27,7 +27,7 @@ function QuestionCard({ request, onAnswer }: { request: AgentQuestionRequestItem
 		</fieldset>)}
 		{error && <p role="alert">{error}</p>}
 		<button type="button" className="btn-primary" disabled={!complete || submitting} onClick={async () => { setSubmitting(true); setError(null); try { await onAnswer(request.requestId, request.questions.map((question, index) => { const choice = answers[index] ?? []; const own = custom[index]?.trim(); return own && question.custom !== false ? [...choice, own] : choice; })); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setSubmitting(false); } }}>提交回答</button>
-	</div>;
+	</div></div>;
 }
 
 export function ExecutionCanvas({
@@ -215,7 +215,6 @@ export function ExecutionCanvas({
 						</button>
 					</div>
 				))}
-				{questions.map((request) => <QuestionCard key={request.requestId} request={request} onAnswer={onAnswer} />)}
 			</div>
 		</section>
 	);

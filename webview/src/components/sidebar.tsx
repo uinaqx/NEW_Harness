@@ -94,8 +94,6 @@ export function Sidebar({ sessions, projects, activeId, activeWorkspace, onSelec
 		<aside className="app-sidebar">
 			<div className="sidebar-brand"><BrandMark size={28} /><strong>某科学的Agent</strong><small className="sidebar-brand-version">v{appPackage.version}</small></div>
 			<nav className="sidebar-primary" aria-label="主导航">
-				<button onClick={() => onNew()}><MessageSquarePlus size={17} /> Work 新对话 <span className="sidebar-shortcut">Ctrl N</span></button>
-				<button onClick={onNewChat}><MessageCircle size={17} /> Chat 开聊</button>
 				<button onClick={onNewProject}><FolderPlus size={17} /> 新建项目</button>
 			</nav>
 			<div className="sidebar-list">
@@ -119,12 +117,12 @@ export function Sidebar({ sessions, projects, activeId, activeWorkspace, onSelec
 							{isOpen && <div className="sidebar-project-chats">{entries.map(renderSession)}{entries.length === 0 && <button className="sidebar-project-empty" onClick={() => onNew(project.workspaceRoot)}>{activeWorkspace === project.workspaceRoot ? "输入消息即可开始" : "新建对话"}</button>}</div>}
 					</div>;
 					})}
-					</section>
-			</div>
-			<section className="sidebar-section sidebar-chat-section">
-					<div className="sidebar-section-label"><span>Chat · 纯对话</span><button onClick={onNewChat} title="开始新聊天"><Plus size={14} /></button></div>
+				</section>
+				<section className="sidebar-section sidebar-chat-section">
+					<div className="sidebar-section-label"><span>聊天</span><button onClick={onNewChat} title="开始新聊天"><Plus size={14} /></button></div>
 					{chatSessions.length ? chatSessions.map(renderSession) : <button className="sidebar-project-empty" onClick={onNewChat}>点击开聊，无需选择工作区</button>}
-			</section>
+				</section>
+			</div>
 			<div className="sidebar-footer">
 				<button onClick={onToggleTheme} title={theme === "dark" ? "切换浅色模式" : "切换深色模式"}>{theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}{theme === "dark" ? "浅色模式" : "深色模式"}</button>
 				<button onClick={onOpenSettings} title="设置"><Settings size={16} /> 设置</button>

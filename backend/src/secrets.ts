@@ -26,6 +26,7 @@ const ENTROPY = new TextEncoder().encode("AgentHarness/credentials/v1");
  * backing buffers in a module-level list and release them right after use.
  */
 const pinned: Uint8Array[] = [];
+const asPointer = (value: number) => value as ReturnType<typeof ptr>;
 function pin(buffer: Uint8Array): Uint8Array {
 	pinned.push(buffer);
 	return buffer;
@@ -71,8 +72,8 @@ function writeBlob(blobPtr: number, data: Uint8Array): number {
 	payload.set(data, 0);
 	pin(payload);
 	const dataPtr = Number(ptr(payload));
-	new DataView(toArrayBuffer(blobPtr, 0, BLOB_SIZE)).setUint32(0, data.length, true);
-	new BigUint64Array(toArrayBuffer(blobPtr, 8, 8))[0] = BigInt(dataPtr);
+	new DataView(toArrayBuffer(asPointer(blobPtr), 0, BLOB_SIZE)).setUint32(0, data.length, true);
+	new BigUint64Array(toArrayBuffer(asPointer(blobPtr), 8, 8))[0] = BigInt(dataPtr);
 	return dataPtr;
 }
 
@@ -83,11 +84,11 @@ function allocateBlob(): number {
 }
 
 function readBlob(blobPtr: number): Uint8Array {
-	const view = new DataView(toArrayBuffer(blobPtr, 0, BLOB_SIZE));
+	const view = new DataView(toArrayBuffer(asPointer(blobPtr), 0, BLOB_SIZE));
 	const length = view.getUint32(0, true);
-	const dataPtr = Number(new BigUint64Array(toArrayBuffer(blobPtr, 8, 8))[0]);
+	const dataPtr = Number(new BigUint64Array(toArrayBuffer(asPointer(blobPtr), 8, 8))[0]);
 	if (!length || !dataPtr) return new Uint8Array(0);
-	const out = new Uint8Array(toArrayBuffer(dataPtr, 0, length));
+	const out = new Uint8Array(toArrayBuffer(asPointer(dataPtr), 0, length));
 	const copy = new Uint8Array(out);
 	try {
 		const free = kernel?.symbols.LocalFree as unknown as ((ptr: number) => number) | undefined;

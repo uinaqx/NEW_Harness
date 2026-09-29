@@ -10,6 +10,7 @@ interface Props {
 	streamingId: string | null;
 	error: string | null;
 	showWaiting?: boolean;
+	showReasoning?: boolean;
 	userAvatar?: string;
 	assistantAvatar?: string;
 	children?: ReactNode;
@@ -38,7 +39,15 @@ function renderContent(content: string) {
 	});
 }
 
-export function ChatMessages({ messages, status, streamingId, error, showWaiting = false, userAvatar, assistantAvatar, children }: Props) {
+function visibleContent(content: string): string {
+	return content.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/<think>[\s\S]*$/gi, "").trim();
+}
+
+function embeddedReasoning(content: string): string {
+	return [...content.matchAll(/<think>([\s\S]*?)<\/think>/gi)].map((match) => match[1].trim()).filter(Boolean).join("\n\n");
+}
+
+export function ChatMessages({ messages, status, streamingId, error, showWaiting = false, showReasoning = false, userAvatar, assistantAvatar, children }: Props) {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const followLatest = useRef(true);
 	const isBusy = status === "starting" || status === "running" || status === "stopping";
@@ -49,7 +58,7 @@ export function ChatMessages({ messages, status, streamingId, error, showWaiting
 		if (el && followLatest.current) el.scrollTop = el.scrollHeight;
 	}, [messages, streamingId, children]);
 
-	const items = useMemo(() => messages.filter((message) => message.role === "user" || message.role === "error" || (message.role === "assistant" && message.content.trim())), [messages]);
+	const items = useMemo(() => messages.filter((message) => message.role === "user" || message.role === "error" || (message.role === "assistant" && (visibleContent(message.content) || (showReasoning && (message.reasoning || embeddedReasoning(message.content)))))), [messages, showReasoning]);
 
 	if (messages.length === 0 && !isBusy) {
 		return null;
@@ -63,6 +72,8 @@ export function ChatMessages({ messages, status, streamingId, error, showWaiting
 					const isAssistant = m.role === "assistant";
 					const isError = m.role === "error";
 					const isStreaming = streamingId === m.id;
+					const content = isAssistant ? visibleContent(m.content) : m.content;
+					const reasoning = showReasoning && isAssistant ? [m.reasoning, embeddedReasoning(m.content)].filter(Boolean).join("\n\n") : "";
 					if (m.role === "system") return null;
 					return (
 						<div className={cn("msg", isUser && "msg-from-user")} key={m.id}>
@@ -73,13 +84,14 @@ export function ChatMessages({ messages, status, streamingId, error, showWaiting
 								<div className="msg-body">
 									<div className="msg-role">{isUser ? "用户" : isError ? "错误" : "某科学的Agent"}</div>
 									<div className={cn("msg-content", isUser ? "msg-user" : isAssistant ? "msg-assistant" : isError ? "msg-error" : "")}>
-										{isStreaming && !m.content ? (
+										{isStreaming && !content ? (
 											<span className="msg-status"><Loader2 size={14} className="spin" /> 正在思考…</span>
 										) : isError ? (
 											<span style={{ display: "flex", gap: 8, alignItems: "center" }}><AlertTriangle size={14} /> {m.content}</span>
 										) : (
-											renderContent(m.content)
+											renderContent(content)
 										)}
+										{reasoning && <details className="msg-reasoning"><summary>查看思考内容</summary><div>{renderContent(reasoning)}</div></details>}
 									</div>
 								</div>
 								{isUser && <div className="msg-avatar user"><AvatarVisual value={userAvatar} size={26} /></div>}

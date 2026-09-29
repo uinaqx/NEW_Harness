@@ -77,7 +77,9 @@
 .composer-send.stop { background: var(--muted-foreground); color: var(--background); }
 .composer-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .composer-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 180px; border-radius: 7px; background: var(--surface-hover); border: 1px solid var(--border); padding: 4px 6px; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.composer-chip button { display: flex; padding: 1px; }
+.composer-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.composer-chip button { display: grid; flex: none; place-items: center; width: 21px; height: 21px; margin: -3px -4px -3px 1px; border-radius: 5px; }
+.composer-chip button:hover { background: var(--surface-active); }
 .composer-error { color: var(--destructive); font-size: 11px; padding: 6px 8px 0; }
 .composer-popover { position: absolute; bottom: calc(100% - 7px); left: max(28px, calc((100% - 900px)/2)); z-index: 80; width: min(420px, calc(100vw - 310px)); max-height: min(68vh, 600px); overflow: auto; background: var(--popover); color: var(--foreground); border: 1px solid var(--border); border-radius: 15px; padding: 8px; box-shadow: 0 20px 60px #0006; }
 .composer-popover button { display: flex; align-items: center; gap: 11px; width: 100%; padding: 10px 11px; text-align: left; border-radius: 8px; font-size: 12px; }
@@ -109,8 +111,23 @@
 .sidebar-brand { justify-content: flex-start; gap: 9px; font-size: 15px; }
 .sidebar-brand strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-brand svg { flex: none; }
-.sidebar-chat-section { flex: 0 1 auto; min-height: 66px; max-height: 36%; overflow-y: auto; border-top: 1px solid var(--border); padding: 14px 8px 8px; margin: 0; }
+.sidebar-chat-section { margin-top: 15px; padding: 14px 0 8px; border-top: 1px solid var(--border); }
 .sidebar-chat-section .sidebar-chat-select { padding-left: 14px; }
+.question-dialog-overlay { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 24px; background: color-mix(in srgb, var(--background) 72%, transparent); backdrop-filter: blur(6px); }
+.question-dialog { width: min(620px, 100%); max-height: calc(100vh - 48px); display: flex; flex-direction: column; overflow: auto; scrollbar-width: none; padding: 25px 28px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); box-shadow: 0 24px 80px color-mix(in srgb, var(--foreground) 17%, transparent); color: var(--foreground); font-size: 13px; animation: harness-arrive 180ms ease both; }
+.question-dialog::-webkit-scrollbar { display: none; }
+.question-dialog > strong { margin-bottom: 20px; font-size: 17px; letter-spacing: -.02em; }
+.question-dialog fieldset { margin-bottom: 20px; }
+.question-dialog legend { padding-bottom: 10px; font-size: 13px; line-height: 1.5; }
+.question-dialog .question-options { width: 100%; gap: 8px; }
+.question-dialog .question-options button { padding: 11px 13px; border-radius: 9px; line-height: 1.4; transition: border-color 180ms, background-color 180ms; }
+.question-dialog .question-options small { font-size: 11px; }
+.question-dialog input { width: 100%; margin-top: 10px; padding: 10px 12px; }
+.question-dialog > button { align-self: flex-end; min-width: 100px; padding: 9px 18px; }
+.question-dialog > p[role="alert"] { color: var(--destructive); }
+.msg-reasoning { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 12px; }
+.msg-reasoning summary { width: fit-content; cursor: pointer; user-select: none; }
+.msg-reasoning > div { max-height: 320px; overflow: auto; padding-top: 10px; white-space: pre-wrap; line-height: 1.6; }
 .composer-chat-pill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 8px; font-size: 11px; color: var(--muted-foreground); }
 .model-menu { left: auto; right: max(28px, calc((100% - 900px)/2)); width: min(370px, calc(100vw - 310px)); }
 .model-group { border-top: 1px solid var(--border); padding: 6px 2px; }

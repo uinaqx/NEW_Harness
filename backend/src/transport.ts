@@ -102,7 +102,9 @@ export function bindEngine(engine: HarnessEngine): void {
 			if (stream === "chat_session_title") {
 				try {
 					const title = String((JSON.parse(chunk) as { title?: string }).title ?? "").trim();
-					if (title) void patchSession(sessionId, { title });
+					if (title) void getSession(sessionId).then((entry) => {
+						if (entry && entry.kind !== "chat" && !entry.customTitle) return patchSession(sessionId, { title });
+					});
 				} catch {}
 			}
 			if (!boots.has(sessionId)) boots.set(sessionId, `${Date.now().toString(36)}`);
@@ -611,7 +613,9 @@ export async function dispatchCommand(req: DesktopTransportRequest): Promise<Des
 				const { target } = await resolveWorkspaceFile(entry.workspaceRoot, String(args.file || ""));
 				if (process.platform !== "win32") return respond(req, false, undefined, "此操作当前仅支持 Windows。");
 				if (req.command === "open_workspace_folder") {
-					Bun.spawn({ cmd: ["explorer.exe", dirname(target)], stdout: "ignore", stderr: "ignore", windowsHide: true });
+					// Explorer is a visible interactive window. Hiding its startup window
+					// made this command appear to succeed without showing the folder.
+					Bun.spawn({ cmd: ["explorer.exe", dirname(target)], stdout: "ignore", stderr: "ignore", windowsHide: false });
 				} else {
 					const encodedPath = Buffer.from(target, "utf8").toString("base64");
 					const script = `$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedPath}')); Start-Process -FilePath $p`;
@@ -706,6 +710,7 @@ export async function dispatchCommand(req: DesktopTransportRequest): Promise<Des
 						lastMessage: prompt.slice(0, 120),
 						lastStatus: "starting",
 						model: entry.model || settings.model,
+						...(entry.kind === "chat" && !entry.customTitle ? { customTitle: prompt.trim().replace(/\s+/g, " ").slice(0, 60) } : {}),
 					});
 					return respond(req, true, { sessionId, queued: true });
 				}

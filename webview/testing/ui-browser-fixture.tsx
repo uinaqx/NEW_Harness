@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { SettingsDialog } from "../src/components/settings-dialog";
-import { ExecutionCanvas } from "../src/components/execution-canvas";
+import { ExecutionCanvas, QuestionDialog } from "../src/components/execution-canvas";
 import { ChatMessages } from "../src/components/chat-messages";
 import { ChatInputBar } from "../src/components/chat-input-bar";
 import { TaskResult } from "../src/components/task-result";
@@ -34,9 +34,10 @@ function Fixture() {
     <aside className="app-sidebar" style={{ padding: "24px 18px" }}><strong>某科学的Agent</strong><p style={{ marginTop: 34 }}>新对话</p><small>项目</small><p>New Harness</p><p style={{ paddingLeft: 12 }}>界面与执行画布</p><button style={{ marginTop: "auto", textAlign: "left" }} onClick={() => document.documentElement.classList.toggle("dark")}>切换主题</button></aside>
     <main className="app-main"><header className="app-titlebar">界面与执行画布</header><div className="app-conversation">
       <ChatMessages messages={messages} status="running" streamingId={null} error={null}><TaskResult startedAt={startedAt} endedAt={startedAt + 123000} busy={false} status="completed" summary={{ toolCalls: 8, tokensIn: 2400, tokensOut: 1200, cacheReadTokens: 700 }} hasUsage diffs={diffs} onOpenFile={(file) => { opened = file; }} onReview={() => {}} /></ChatMessages>
-	  <ExecutionCanvas messages={messages} status="running" sessionId="s" approvals={[]} questions={query.get("view") === "question" ? [{ requestId: "q", sessionId: "s", questions: [{ header: "方案", question: "请选择实现方案", options: [{ label: "简洁", description: "使用简单布局" }, { label: "详细", description: "提供更多信息" }], custom: true }] }] : []} startedAt={startedAt} onApprove={() => {}} onReject={() => {}} onAnswer={async (_id, answers) => { answered = answers; }} />
+	  <ExecutionCanvas messages={messages} status="running" sessionId="s" approvals={[]} questions={[]} startedAt={startedAt} onApprove={() => {}} onReject={() => {}} onAnswer={async (_id, answers) => { answered = answers; }} />
     </div>{query.get("view") === "upload" ? <ChatInputBar onSend={async (_prompt, options) => { uploaded = options.inlineAttachments ?? []; }} onStop={() => {}} onOpenSettings={() => {}} onPickFolder={async () => null} onPickFiles={async () => []} onWorkspaceChange={() => {}} onProfileModelChange={() => {}} onModeChange={() => {}} onGoalChange={() => {}} onApprovalModeChange={async () => {}} approvalMode="ask" busy={false} model="mock" profileId="default" profiles={[]} kind="chat" workspace="" projects={[]} mode="act" goal="" workspaceLocked={false} /> : <div style={{ margin: "14px 40px 22px", padding: "20px", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 14, color: "var(--muted-foreground)" }}>继续描述任务…<div style={{ display: "flex", justifyContent: "space-between", marginTop: 20 }}>＋<span>deepseek-flash　↑</span></div></div>}</main>
     <SettingsDialog open={settingsOpen} mode="update" settings={null} lastWorkspace="" osProtected busyCommand={null} onClose={() => { closes++; setSettingsOpen(false); }} onSave={async (draft) => { saves++; check("save carries one model", !!draft.model && !("models" in draft)); return "p"; }} onDeleteProfile={async () => {}} onTest={async () => { throw new Error("测试失败可见"); }} onValidateWorkspace={async (path) => ({ valid: true, resolved: path })} onPickWorkspace={async () => { picked++; return "C:\\测试项目"; }} onAppearanceChange={async () => {}} onAvatarChange={async (_role, value) => { avatarSaved = value; }} />
+    {query.get("view") === "question" && <QuestionDialog request={{ requestId: "q", sessionId: "s", questions: [{ header: "方案", question: "请选择实现方案", options: [{ label: "简洁", description: "使用简单布局" }, { label: "详细", description: "提供更多信息" }], custom: true }] }} onAnswer={async (_id, answers) => { answered = answers; }} />}
   </div>;
 }
 createRoot(document.getElementById("root")!).render(<Fixture />);
@@ -79,6 +80,10 @@ void (async () => {
 		const transfer = new DataTransfer(); transfer.items.add(file);
 		document.querySelector(".composer")!.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
 		check("dropped file appears as attachment chip", await waitFor(() => document.querySelector(".composer-chip")?.textContent?.includes("notes.txt") === true));
+		document.querySelector<HTMLButtonElement>('.composer-chip button[title="移除附件"]')!.click(); await pause();
+		check("unsent attachment can be removed", !document.querySelector(".composer-chip"));
+		document.querySelector(".composer")!.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
+		check("removed attachment can be re-added", await waitFor(() => document.querySelector(".composer-chip")?.textContent?.includes("notes.txt") === true));
 		document.querySelector<HTMLButtonElement>('.composer-send[title="发送"]')!.click();
 		check("chat sends dropped file as read-only upload", await waitFor(() => uploaded.length === 1 && uploaded[0].name === "notes.txt" && uploaded[0].dataUrl.startsWith("data:text/plain;base64,")));
 	}
@@ -97,7 +102,7 @@ void (async () => {
   check("file click targets corresponding file", opened === diffs[0].file);
   check("completed duration and tokens", document.querySelector(".task-telemetry")!.textContent!.includes("2分3秒") && document.querySelector(".task-telemetry")!.textContent!.includes("4,300 Token"));
   if (query.get("view") === "question") { button("简洁")!.click(); await pause(); check("question option can be selected", document.querySelector('.question-options button[aria-pressed="true"]')?.textContent?.includes("简洁") === true); button("提交回答")!.click(); await pause(); check("question answer reaches submit callback", answered?.[0]?.[0] === "简洁"); }
-	if (query.get("view") === "question") check("question choices are stacked vertically", getComputedStyle(document.querySelector(".question-options")!).flexDirection === "column");
+	if (query.get("view") === "question") { check("question is in a separate modal", !!document.querySelector(".question-dialog-overlay [role=dialog]") && !document.querySelector(".harness-execution .harness-question")); check("question choices are stacked vertically", getComputedStyle(document.querySelector(".question-options")!).flexDirection === "column"); check("question modal has no visible scrollbar", getComputedStyle(document.querySelector(".question-dialog")!).scrollbarWidth === "none"); }
   if (query.get("view") === "settings") { button("切换主题")!.click(); await pause(); check("theme switch preserves trace", document.querySelectorAll(".harness-trace-row").length === count); }
 	if (query.get("view") === "settings") { reopenSettings(); await new Promise<void>((resolve) => setTimeout(resolve, 350)); const pane = document.querySelector<HTMLElement>(".settings-dialog")!; const heading = document.querySelector<HTMLElement>(".settings-content h3")!; const bg = getComputedStyle(pane).backgroundColor; const fg = getComputedStyle(heading).color; check(`settings light contrast (${bg}, ${fg})`, Number(bg.match(/\d+/)?.[0] ?? 0) > 190 && Number(fg.match(/\d+/)?.[0] ?? 255) < 140); }
   const output = document.createElement("script"); output.id = "ui-qa-result"; output.type = "application/json"; output.textContent = JSON.stringify(results); document.body.append(output);

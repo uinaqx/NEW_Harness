@@ -10,7 +10,10 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"devDependencies": {
-		"@types/bun": "latest",
+		"@types/bun": "1.2.20",
 		"typescript": "^5.5.0"
+	},
+	"dependencies": {
+		"mammoth": "^1.13.0"
 	}
 }
