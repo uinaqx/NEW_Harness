@@ -331,6 +331,10 @@ async function main() {
 
 		const reread = await client.invoke<{ settings: Record<string, unknown> }>("get_model_settings");
 		assert("settings: reading back never returns the key", reread.settings.apiKey === "" && !!reread.settings.hasApiKey, reread.settings);
+		const themed = await client.invoke<{ settings: Record<string, unknown> }>("save_model_settings", { themePreset: "fairy", theme: "light" });
+		assert("themes: role and light mode are persisted independently", themed.settings.themePreset === "fairy" && themed.settings.theme === "light", themed.settings);
+		const themeReload = await client.invoke<{ settings: Record<string, unknown> }>("get_model_settings");
+		assert("themes: selected role survives settings reload", themeReload.settings.themePreset === "fairy", themeReload.settings.themePreset);
 		note(`key mask shown to the UI: ${String(reread.settings.apiKeyMask)}`);
 
 		const test = await client.invoke<Record<string, unknown>>("test_model_connection", {});
@@ -387,7 +391,8 @@ async function main() {
 		type PromptOutcome = { chunks: Array<{ stream: string; chunk: string }>; approvals: string[]; done: Record<string, unknown> };
 		async function runPrompt(text: string, decision: "allow" | "reject", expectApproval: boolean, options: Record<string, unknown> = {}): Promise<PromptOutcome> {
 			const cursor = client.events.length;
-			const ack = await client.invoke<Record<string, unknown>>("chat_session_command", { action: "send", sessionId, prompt: text, ...options });
+			const targetSession = String(options.sessionId ?? sessionId);
+			const ack = await client.invoke<Record<string, unknown>>("chat_session_command", { action: "send", sessionId: targetSession, prompt: text, ...options });
 			trace.push(`send "${text}" -> ${JSON.stringify(ack)}`);
 			const approvals: string[] = [];
 			if (expectApproval) {
@@ -395,7 +400,7 @@ async function main() {
 					"tool_approval_state",
 					(p) => {
 						const list = (p.approvals ?? []) as Array<Record<string, unknown>>;
-						return String(p.sessionId) === sessionId && list.length > 0;
+						return String(p.sessionId) === targetSession && list.length > 0;
 					},
 					60_000,
 					cursor,
@@ -404,7 +409,7 @@ async function main() {
 				for (const item of list) {
 					approvals.push(String(item.toolName));
 					await client.invoke("resolve_tool_approval", {
-						sessionId,
+						sessionId: targetSession,
 						requestId: String(item.requestId),
 						decision,
 					});
@@ -412,17 +417,36 @@ async function main() {
 			}
 			const done = await client.waitFor(
 				"chat_event",
-				(p) => String(p.sessionId) === sessionId && String(p.stream) === "chat_done",
+				(p) => String(p.sessionId) === targetSession && String(p.stream) === "chat_done",
 				60_000,
 				cursor,
 			);
-			return { chunks: client.chunksSince(sessionId, cursor), approvals, done: (done ?? {}) as Record<string, unknown> };
+			return { chunks: client.chunksSince(targetSession, cursor), approvals, done: (done ?? {}) as Record<string, unknown> };
 		}
 
 		// Verification snapshots are captured even if a later assertion fails.
 		trace.push(`engine: ${JSON.stringify(await client.invoke("engine_status"))}`);
 
 		const turn1 = await runPrompt("写文件 PHASE1", "allow", true);
+		const fairyRequest = mock.requests.find((request) => JSON.stringify(request).includes("写文件 PHASE1"));
+		assert("themes: Fairy primary system identity reaches the actual model request", !!fairyRequest && JSON.stringify(fairyRequest).includes("你是《绝区零》中的 Fairy") && JSON.stringify(fairyRequest).includes("每次调用工具之前") && !JSON.stringify(fairyRequest).includes("You are opencode"), fairyRequest ? JSON.stringify(fairyRequest).slice(0, 300) : "missing request");
+		assert("delivery: Work output instruction reaches the actual model request", !!fairyRequest && JSON.stringify(fairyRequest).includes("不要主动粘贴整份文件代码"), "instruction present");
+		const createdDiffs = JSON.parse(String(turn1.done.chunk)).diffs;
+		assert("diff: completion handoff already contains the changed-file collection", Array.isArray(createdDiffs) && createdDiffs.some((diff: any) => diff.file === "PHASE1.txt"), createdDiffs);
+		const plainWorkspace = join(dataDir, "non-git-project");
+		await mkdir(plainWorkspace, { recursive: true });
+		await writeFile(join(plainWorkspace, "README.md"), "# non-git workspace\n");
+		const plain = await client.invoke<{ session: { id: string } }>("create_session", { workspaceRoot: plainWorkspace });
+		await runPrompt("写文件 非Git", "allow", true, { sessionId: plain.session.id });
+		const plainDiffs = await client.invoke<{ diffs: Array<{ file: string; additions: number; deletions: number; patch: string }> }>("list_session_diffs", { sessionId: plain.session.id, latestTurn: true });
+		assert("diff: non-Git new file is listed with exact counts and patch", plainDiffs.diffs.length === 1 && plainDiffs.diffs[0]?.file === "PHASE1.txt" && plainDiffs.diffs[0].additions === 1 && plainDiffs.diffs[0].deletions === 0 && plainDiffs.diffs[0].patch.includes("+hello from harness"), plainDiffs.diffs);
+		await runPrompt("改文件 非Git", "allow", true, { sessionId: plain.session.id });
+		const plainEdits = await client.invoke<{ diffs: Array<{ file: string; additions: number; deletions: number }> }>("list_session_diffs", { sessionId: plain.session.id, latestTurn: true });
+		assert("diff: following non-Git edit excludes the preceding round", plainEdits.diffs.length === 1 && plainEdits.diffs[0]?.file === "README.md" && plainEdits.diffs[0].additions === 1 && plainEdits.diffs[0].deletions === 1, plainEdits.diffs);
+		await runPrompt("读文件 非Git", "allow", false, { sessionId: plain.session.id });
+		const plainRead = await client.invoke<{ diffs: unknown[] }>("list_session_diffs", { sessionId: plain.session.id, latestTurn: true });
+		assert("diff: read-only turn does not reuse a prior change collection", plainRead.diffs.length === 0, plainRead.diffs);
+		await client.invoke("save_model_settings", { themePreset: "klee" });
 		assert("approval: write asked for permission and was allowed", turn1.approvals.length === 1 && turn1.approvals[0] !== "", turn1.approvals);
 		const wrote = existsSync(join(workspace, "PHASE1.txt"));
 		assert("canvas: tool-start/tool-end chunks streamed for the write", wrote, join(workspace, "PHASE1.txt"));
@@ -441,6 +465,8 @@ async function main() {
 		assert("canvas: actual token usage totals include both model calls once", usageTotals.input === 22 && usageTotals.output === 10, usageTotals);
 
 		const turn2 = await runPrompt("跑个命令", "reject", true);
+		const kleeRequest = mock.requests.find((request) => JSON.stringify(request).includes("跑个命令") && JSON.stringify(request).includes("你是《原神》中的可莉"));
+		assert("themes: Klee style applies on the following turn", !!kleeRequest, kleeRequest ? "found" : "missing themed request");
 		const toolEnd = turn2.chunks.filter((c) => c.stream === "chat_tool_call_end");
 		assert("approval: rejecting hands the decision to the engine", turn2.approvals.length === 1, turn2.approvals);
 		assert(
@@ -549,6 +575,17 @@ async function main() {
 		const chatRequest = mock.requests.at(-1);
 		assert("chat: selected API and model are used", chatRequest?.model === "mock-model-third", chatRequest?.model);
 		assert("chat: provider request advertises no tools", !Array.isArray(chatRequest?.tools) || chatRequest.tools.length === 0, chatRequest?.tools ?? "none");
+		for (let turn = 1; turn <= 3; turn++) {
+			const cursor = client.events.length;
+			await client.invoke("chat_session_command", { action: "send", sessionId: chatId, prompt: `连续对话 ${turn}` });
+			await client.waitFor("chat_event", (payload) => payload.sessionId === chatId && payload.stream === "chat_done", 60_000, cursor);
+			assert(`chat: continuation ${turn} streams its answer before done`, client.chunksSince(chatId, cursor).some((item) => item.stream === "chat_text" && item.chunk.trim()), client.chunksSince(chatId, cursor).map((item) => item.stream));
+		}
+		const thoughtCursor = client.events.length;
+		await client.invoke("chat_session_command", { action: "send", sessionId: chatId, prompt: "测试思考分离" });
+		await client.waitFor("chat_event", (payload) => payload.sessionId === chatId && payload.stream === "chat_done", 60_000, thoughtCursor);
+		const thoughtChunks = client.chunksSince(chatId, thoughtCursor);
+		assert("reasoning: English analysis only reaches the reasoning stream", thoughtChunks.some((item) => item.stream === "chat_reasoning" && item.chunk.includes("Let me")) && !thoughtChunks.some((item) => item.stream === "chat_text" && /Let me|inspect|answer in/.test(item.chunk)), thoughtChunks.map((item) => item.stream));
 		const uploadCursor = client.events.length;
 		const uploadRequestCursor = mock.requests.length;
 		await client.invoke("chat_session_command", { action: "send", sessionId: chatId, prompt: "请阅读附件", inlineAttachments: [{ name: "note.txt", mime: "text/plain", dataUrl: `data:text/plain;base64,${Buffer.from("只读附件内容", "utf8").toString("base64")}` }] });
@@ -556,6 +593,9 @@ async function main() {
 		assert("chat: explicitly uploaded file is accepted without enabling tools", !String(uploadDone.chunk).includes('"reason":"error"') && !client.chunksSince(chatId, uploadCursor).some((item) => item.stream === "chat_tool_call_start"), uploadDone.chunk);
 		const uploadPayload = JSON.stringify(mock.requests.slice(uploadRequestCursor));
 		assert("chat: uploaded bytes reach the model request", uploadPayload.includes(Buffer.from("只读附件内容", "utf8").toString("base64")) || uploadPayload.includes("只读附件内容"), uploadPayload.slice(0, 300));
+		const uploadedHistory = await client.invoke<{ messages: ChatMessage[] }>("read_session_messages", { sessionId: chatId });
+		const uploadedUser = uploadedHistory.messages.filter((message) => message.role === "user").at(-1);
+		assert("attachments: history displays filename without document body", !!uploadedUser?.content.includes("note.txt") && !uploadedUser.content.includes("只读附件内容"), uploadedUser?.content);
 		const docxBytes = await readFile(join(import.meta.dir, "..", "backend", "src", "fixtures", "sample.docx"));
 		const docxRequestCursor = mock.requests.length;
 		const docxCursor = client.events.length;
@@ -563,6 +603,8 @@ async function main() {
 		const docxDone = await client.waitFor("chat_event", (payload) => payload.sessionId === chatId && payload.stream === "chat_done", 60_000, docxCursor);
 		const docxPayload = JSON.stringify(mock.requests.slice(docxRequestCursor));
 		assert("chat: DOCX text reaches the provider without unsupported media type", !String(docxDone.chunk).includes('"reason":"error"') && docxPayload.includes("附件内容可以被模型阅读"), { done: docxDone.chunk, textFound: docxPayload.includes("附件内容可以被模型阅读") });
+		const docxHistory = await client.invoke<{ messages: ChatMessage[] }>("read_session_messages", { sessionId: chatId });
+		assert("attachments: DOCX history hides extracted body", docxHistory.messages.filter((message) => message.role === "user").at(-1)?.content === "查看 Word 附件\n\n附件：说明.docx", docxHistory.messages.filter((message) => message.role === "user").at(-1)?.content);
 		const chatWriteCursor = client.events.length;
 		await client.invoke("chat_session_command", { action: "send", sessionId: chatId, prompt: "写文件 PHASE1" });
 		await client.waitFor("chat_event", (payload) => payload.sessionId === chatId && payload.stream === "chat_done", 60_000, chatWriteCursor);
@@ -604,8 +646,10 @@ async function main() {
 		assert("files: preview refuses an invalid token", previewDenied.status === 404, previewDenied.status);
 		const blockedOutside = await client.invoke("read_workspace_file", { sessionId, file: join(dataDir, "app-settings.json") }).then(() => false).catch(() => true);
 		assert("files: preview refuses paths outside the project", blockedOutside, blockedOutside);
-		const usage = await client.invoke<{ inputTokens: number; outputTokens: number; sessions: number }>("get_usage_overview", {}, 180_000);
+		const usage = await client.invoke<import("../shared/types").UsageOverviewPayload>("get_usage_overview", {}, 180_000);
 		assert("personal: local usage sums actual stored assistant tokens", usage.sessions >= 1 && usage.inputTokens > 0 && usage.outputTokens > 0, usage);
+		assert("personal: daily activity reconciles with total tokens", usage.days.reduce((sum, day) => sum + day.inputTokens, 0) === usage.inputTokens && usage.days.reduce((sum, day) => sum + day.outputTokens, 0) === usage.outputTokens && usage.days.reduce((sum, day) => sum + day.cacheReadTokens, 0) === usage.cacheReadTokens, usage.days);
+		assert("personal: Work and Chat turns reconcile and metrics contain no transcript", usage.turns === usage.workTurns + usage.chatTurns && usage.workTurns > 0 && usage.chatTurns > 0 && usage.toolCalls > 0 && usage.totalDurationMs > 0 && !JSON.stringify(usage).includes("hidden reasoning"), { work: usage.workTurns, chat: usage.chatTurns, tools: usage.toolCalls });
 		const lastUser = transcript.messages.findLast((message) => message.role === "user");
 		const latestDiffs = await client.invoke<{ diffs: unknown[] }>("list_session_diffs", { sessionId, latestTurn: true });
 		const explicitDiffs = await client.invoke<{ diffs: unknown[] }>("list_session_diffs", { sessionId, messageId: lastUser?.id });

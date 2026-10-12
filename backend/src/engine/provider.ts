@@ -10,6 +10,7 @@
  *   anthropic         -> @ai-sdk/anthropic          (Messages)
  */
 import type { AppSettings } from "../app-settings";
+import { themeStyleGuidance } from "./theme-style";
 
 export const PROVIDER_ID = "harness";
 
@@ -21,6 +22,10 @@ export function providerIdFor(profileId: string): string {
 export const CHAT_DISABLED_TOOLS: Record<string, boolean> = Object.fromEntries(
 	["read", "edit", "write", "apply_patch", "bash", "glob", "grep", "list", "task", "todowrite", "todoread", "webfetch", "websearch", "lsp", "skill", "question"].map((name) => [name, false]),
 );
+
+export function themedAgentName(theme: AppSettings["themePreset"], kind: "work" | "chat" | "plan"): string | undefined {
+	return theme === "classic" ? undefined : `harness-${theme}-${kind}`;
+}
 
 /** A stable, readable model id even when the user typed something exotic. */
 export function modelRef(model: string): string {
@@ -62,6 +67,24 @@ export function buildOpenCodeConfig({ settings, apiKey, profileKeys = {} }: Prov
 		};
 	}
 
+	// Register both characters once. Changing appearance selects an agent on the
+	// next turn without restarting the engine or the current task.
+	const themedAgents = Object.fromEntries((["fairy", "klee"] as const).flatMap((theme) => (["work", "chat", "plan"] as const).map((kind) => [
+		themedAgentName(theme, kind)!,
+		kind === "chat" ? {
+			mode: "primary", prompt: `${themeStyleGuidance(theme)}\n\n你正在普通聊天模式。直接用文字回答用户。不能调用工具，不能读写本地文件或执行命令。`,
+			tools: { "*": false, ...CHAT_DISABLED_TOOLS },
+			permission: { "*": "deny", read: "deny", edit: "deny", glob: "deny", grep: "deny", list: "deny", bash: "deny", task: "deny", skill: "deny", external_directory: "deny" },
+		} : kind === "plan" ? {
+			mode: "primary", prompt: `${themeStyleGuidance(theme)}\n\n此轮处于计划模式：只读取、分析和制定计划，不得修改文件、执行修改命令或实际实施计划。`,
+			permission: { edit: "deny", bash: "ask", question: "allow" },
+		} : {
+			mode: "primary", prompt: `${themeStyleGuidance(theme)}\n\n你是用户本地项目的执行助手。按用户请求使用工具并遵守所有授权规则。`,
+			// Custom agents inherit question:deny; mirror the built-in primary
+			// agent so character mode keeps the same interactive question flow.
+			permission: { question: "allow" },
+		},
+	])));
 	return {
 		$schema: "https://opencode.ai/config.json",
 		model: `${providerIdFor(primary.id)}/${model}`,
@@ -70,6 +93,7 @@ export function buildOpenCodeConfig({ settings, apiKey, profileKeys = {} }: Prov
 		share: "disabled",
 		provider: providers,
 		agent: {
+			...themedAgents,
 			"harness-chat": {
 				mode: "primary",
 				description: "普通聊天，不访问文件、不执行命令或其他工具。",

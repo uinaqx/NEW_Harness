@@ -4,9 +4,7 @@ import type { ChatMessage, ChatSessionStatus } from "@/lib/chat-schema";
 import { currentTurnSteps, executionCapacity, executionDescription, executionExplanation, executionMetrics, executionOutcome, executionPayload, executionFailed, formatDuration, splitExecutionSteps } from "@/lib/execution-window";
 import type { AgentQuestionRequestItem, ToolApprovalRequestItem } from "@/lib/chat-schema";
 
-const COLLAPSE_HOLD_MS = 1200;
-/** Hold time plus the CSS transition length (300ms) before the track is cleared. */
-const CLEAR_AFTER_MS = COLLAPSE_HOLD_MS + 300;
+/** Details close when the completion handoff starts; CSS collapses over 300ms. */
 
 function StepMetrics({ step }: { step: ChatMessage }) {
 	const metrics = executionMetrics(step);
@@ -55,7 +53,6 @@ export function ExecutionCanvas({
 	const archiveTrack = useRef<HTMLDivElement>(null);
 	const currentTrack = useRef<HTMLDivElement>(null);
 	const [maxHeight, setMaxHeight] = useState<number>();
-	const [open, setOpen] = useState(false);
 	const [selected, setSelected] = useState<string | null>(null);
 	const [now, setNow] = useState(Date.now());
 	const [capacity, setCapacity] = useState(6);
@@ -81,22 +78,10 @@ export function ExecutionCanvas({
 	// A new session starts with an empty canvas: history is not replayed.
 	useEffect(() => {
 		setSelected(null);
-		setOpen(false);
 	}, [sessionId]);
 
 	useEffect(() => {
-		if (busy) {
-			setOpen(true);
-			return;
-		}
-		const collapse = setTimeout(() => setOpen(false), COLLAPSE_HOLD_MS);
-		const clear = setTimeout(() => {
-			setSelected(null);
-		}, CLEAR_AFTER_MS);
-		return () => {
-			clearTimeout(collapse);
-			clearTimeout(clear);
-		};
+		if (!busy) setSelected(null);
 	}, [busy, sessionId]);
 
 	// Close the detail panel when its node was evicted by the height budget.
@@ -123,7 +108,7 @@ export function ExecutionCanvas({
 	}, [busy]);
 
 	return (
-		<section ref={root} className="harness-execution" data-open={open} aria-label="实时执行画布" aria-hidden={!open} inert={!open}>
+		<section ref={root} className="harness-execution" data-open={busy} aria-label="实时执行画布" aria-hidden={!busy} inert={!busy}>
 			<div className="harness-execution-inner" style={{ maxHeight }}>
 				<header>
 					<span>

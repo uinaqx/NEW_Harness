@@ -34,6 +34,12 @@ describe("live execution trace", () => {
 		expect(executionDescription({ ...intended, meta: { ...intended.meta, stepIntent: "阅读项目入口文件" } })).toBe("阅读项目入口文件");
 	});
 
+	test("thinking uses one explanation and preserves specific model intent", () => {
+		const thought = { ...tool("thought", "running", { description: "分析问题并规划下一步" }), meta: { toolName: "thinking", messageKind: "reasoning" as const } };
+		expect(executionDescription(thought)).toBe("分析问题并规划下一步");
+		expect(executionDescription({ ...thought, meta: { ...thought.meta, stepIntent: "检查贪吃蛇碰撞逻辑" } })).toBe("检查贪吃蛇碰撞逻辑");
+	});
+
 	test("retains every overflow step in chronological archive while keeping six recent rows", () => {
 		const messages = [user("prompt"), ...Array.from({ length: 10 }, (_, index) => tool(String(index)))];
 		const split = splitExecutionSteps(messages, 6);

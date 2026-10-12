@@ -65,7 +65,10 @@ export function executionDescription(message: ChatMessage): string {
 		const record = input as Record<string, unknown>;
 		for (const key of ["description", "filePath", "path", "command", "pattern", "query", "url", "name"]) {
 			const value = record[key];
-			if (typeof value === "string" && value.trim()) return `${executionExplanation(message)} · ${value.replace(/\s+/g, " ").trim().slice(0, 180)}`;
+			if (typeof value === "string" && value.trim()) {
+				const label = value.replace(/\s+/g, " ").trim().slice(0, 180);
+				return message.meta?.messageKind === "reasoning" || message.meta?.toolName === "thinking" ? label : `${executionExplanation(message)} · ${label}`;
+			}
 		}
 	}
 	return message.meta?.title?.trim() ? `${executionExplanation(message)} · ${message.meta.title.trim()}` : executionExplanation(message);

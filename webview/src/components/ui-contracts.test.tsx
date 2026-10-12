@@ -8,9 +8,25 @@ import { Sidebar } from "./sidebar";
 import appPackage from "../../../package.json";
 import type { ChatMessage } from "@/lib/chat-schema";
 
+test("assistant Markdown renders strong text, code, lists and GFM tables safely", () => {
+	const message: ChatMessage = { id: "md", sessionId: "s", role: "assistant", content: "**实验目的**：阅读 `index.ts`\n\n- 读取文件\n- 执行测试\n\n| 文件 | 状态 |\n| --- | --- |\n| a.ts | 完成 |\n\n<script>alert(1)</script>", createdAt: 1 };
+	const html = renderToStaticMarkup(<ChatMessages messages={[message]} status="completed" streamingId={null} error={null} />);
+	expect(html).toContain("<strong>实验目的</strong>");
+	expect(html).toContain("<code>index.ts</code>");
+	expect(html).toContain("<li>读取文件</li>");
+	expect(html).toContain("<table>");
+	expect(html).not.toContain("<script>");
+});
+
 test("sidebar displays the frontend build version", () => {
 	const html = renderToStaticMarkup(<Sidebar sessions={[]} projects={[]} activeId={null} onSelect={() => {}} onNew={() => {}} onNewChat={() => {}} onNewProject={() => {}} onOpenSettings={() => {}} onDelete={async () => {}} onRename={async () => {}} onPin={async () => {}} onRenameProject={async () => {}} onProjectIcon={async () => {}} onActionError={() => {}} theme="dark" onToggleTheme={() => {}} status="idle" />);
 	expect(html).toContain(`v${appPackage.version}`);
+	const nav = html.match(/<nav[^>]*aria-label="主导航"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
+	expect(nav).toContain("Work");
+	expect(nav).toContain("Chat");
+	expect(nav).not.toContain("新对话");
+	expect(nav).not.toContain("开聊");
+	expect(html).not.toContain("纯对话");
 });
 
 test("conversation renders feedback but not tools, output, status steps or reasoning", () => {
@@ -22,6 +38,19 @@ test("conversation renders feedback but not tools, output, status steps or reaso
 	const html = renderToStaticMarkup(<ChatMessages messages={messages} status="completed" streamingId={null} error={null} />);
 	expect(html).toContain("任务反馈");
 	for (const text of ["隐藏思考", "隐藏工具参数", "隐藏工具输出", "隐藏步骤摘要"]) expect(html).not.toContain(text);
+});
+
+test("Work reveals the final streaming answer in the same state that closes its canvas", () => {
+	const messages: ChatMessage[] = [{ id: "u", sessionId: "s", role: "user", content: "执行任务", createdAt: 1 }, { id: "feedback", sessionId: "s", role: "assistant", content: "之前的反馈", createdAt: 2 }, { id: "final", sessionId: "s", role: "assistant", content: "最终结果", createdAt: 3 }];
+	for (const status of ["running", "completed", "cancelled", "error"] as const) {
+		const chat = renderToStaticMarkup(<ChatMessages messages={messages} status={status} streamingId="final" error={null} deferActiveAnswer />);
+		const canvas = renderToStaticMarkup(<ExecutionCanvas messages={messages} status={status} sessionId="s" approvals={[]} questions={[]} startedAt={1} onApprove={() => {}} onReject={() => {}} onAnswer={async () => {}} />);
+		expect(chat.includes("最终结果")).toBe(status !== "running");
+		expect(chat).toContain("之前的反馈");
+		expect(canvas).toContain(`data-open="${status === "running"}"`);
+	}
+	const chat = renderToStaticMarkup(<ChatMessages messages={messages} status="running" streamingId="final" error={null} />);
+	expect(chat).toContain("最终结果");
 });
 
 test("Chat hides reasoning until its disclosure is opened", () => {

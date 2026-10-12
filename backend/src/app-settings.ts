@@ -35,6 +35,7 @@ export interface AppSettings {
 	fullAccess: boolean;
 	/** UI preference, mirrored to the backend so it survives a reinstall. */
 	theme: "dark" | "light";
+	themePreset: "classic" | "fairy" | "klee";
 	fontFamily: "system" | "mono";
 	fontSize: "small" | "normal" | "large";
 	userAvatar: string;
@@ -98,6 +99,7 @@ export function defaultSettings(): AppSettings {
 		autoApproveCommands: false,
 		fullAccess: false,
 		theme: "dark",
+		themePreset: "classic",
 		fontFamily: "system",
 		fontSize: "normal",
 		userAvatar: "preset:user",
@@ -112,7 +114,7 @@ export async function loadSettings(): Promise<AppSettings> {
 	try {
 		const raw = await readFile(paths.settings(), "utf8");
 		const parsed = JSON.parse(raw) as Partial<AppSettings>;
-		cached = normalizeProfiles({ ...defaultSettings(), ...parsed, profiles: parsed.profiles ?? [], version: 1 });
+		cached = normalizeProfiles({ ...defaultSettings(), ...parsed, themePreset: parsed.themePreset === "fairy" || parsed.themePreset === "klee" ? parsed.themePreset : "classic", profiles: parsed.profiles ?? [], version: 1 });
 	} catch {
 		cached = defaultSettings();
 	}
@@ -133,7 +135,7 @@ export async function saveSettings(patch: Partial<AppSettings>): Promise<AppSett
 			} : item),
 		};
 	}
-	const merged: AppSettings = normalizeProfiles({ ...current, ...patch, version: 1 });
+	const merged: AppSettings = normalizeProfiles({ ...current, ...patch, themePreset: patch.themePreset === "fairy" || patch.themePreset === "klee" ? patch.themePreset : patch.themePreset === "classic" ? "classic" : current.themePreset, version: 1 });
 	await mkdir(dirname(paths.settings()), { recursive: true });
 	const tmp = `${paths.settings()}.tmp`;
 	await writeFile(tmp, JSON.stringify(merged, null, 2), "utf8");
@@ -154,7 +156,7 @@ export function normalizeBaseUrl(value: string): string {
 }
 
 export function maskSettings(settings: AppSettings, hasApiKey: boolean, apiKeyMask: string | null, profileKeys: Record<string, string> = {}) {
-	const { protocol, baseUrl, model, profiles, defaultProfileId, lastWorkspace, autoApproveEdits, autoApproveCommands, fullAccess, theme, fontFamily, fontSize, userAvatar, assistantAvatar, legacyMigratedAt } = settings;
+	const { protocol, baseUrl, model, profiles, defaultProfileId, lastWorkspace, autoApproveEdits, autoApproveCommands, fullAccess, theme, themePreset, fontFamily, fontSize, userAvatar, assistantAvatar, legacyMigratedAt } = settings;
 	return {
 		protocol,
 		baseUrl,
@@ -166,6 +168,7 @@ export function maskSettings(settings: AppSettings, hasApiKey: boolean, apiKeyMa
 		autoApproveCommands,
 		fullAccess,
 		theme,
+		themePreset,
 		fontFamily,
 		fontSize,
 		userAvatar,

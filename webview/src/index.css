@@ -87,8 +87,8 @@ input, textarea { font-family: inherit; }
 .sidebar-count { display: inline-flex; align-items: center; gap: 4px; }
 
 /* ---------- 2c. Chat messages ---------- */
-.chat-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 20px 0 8px; }
-.chat-inner { max-width: 820px; margin: 0 auto; padding: 0 24px 120px; display: flex; flex-direction: column; gap: 14px; }
+.chat-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 20px 0 4px; }
+.chat-inner { max-width: 820px; margin: 0 auto; padding: 0 24px 4px; display: flex; flex-direction: column; gap: 14px; }
 .msg { display: flex; flex-direction: column; gap: 6px; }
 .msg-row { display: flex; gap: 10px; }
 .msg-row.from-user { justify-content: flex-end; }
@@ -106,6 +106,19 @@ input, textarea { font-family: inherit; }
 .msg-content code { font-family: "Geist Mono", "SF Mono", Consolas, monospace; }
 .msg-content p { margin: 0 0 8px; }
 .msg-content p:last-child { margin-bottom: 0; }
+.msg-content :is(h1, h2, h3, h4) { margin: 14px 0 8px; line-height: 1.35; font-weight: 650; }
+.msg-content h1 { font-size: 1.45em; }
+.msg-content h2 { font-size: 1.25em; }
+.msg-content h3 { font-size: 1.1em; }
+.msg-content :is(ul, ol) { margin: 6px 0 10px; padding-left: 1.6em; }
+.msg-content li { margin: 3px 0; }
+.msg-content li > p { margin-bottom: 3px; }
+.msg-content blockquote { margin: 8px 0; padding: 3px 0 3px 12px; border-left: 2px solid var(--border); color: var(--muted-foreground); }
+.msg-content :not(pre) > code { padding: 1px 4px; border-radius: 4px; background: var(--card); }
+.msg-content a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+.msg-content table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 8px 0; }
+.msg-content :is(th, td) { border: 1px solid var(--border); padding: 6px 9px; text-align: left; }
+.msg-content th { background: var(--card); }
 .msg-user { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
 .msg-assistant { }
 .msg-error { color: var(--destructive); border-left: 2px solid var(--destructive); padding-left: 10px; }

@@ -44,6 +44,7 @@ import { mkdir, readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { BUILTIN_SKILLS } from "../../shared/skills";
 import { readWorkspaceFile, resolveWorkspaceFile } from "./workspace-files";
+import { emptyUsageOverview, mergeUsageOverview } from "./usage-overview";
 
 async function nativePicker(kind: "folder" | "files"): Promise<string[]> {
 	if (process.platform !== "win32") throw new UserFacingError("当前平台请手动填写绝对路径。");
@@ -251,6 +252,7 @@ export async function dispatchCommand(req: DesktopTransportRequest): Promise<Des
 				if (typeof args.autoApproveCommands === "boolean") patch.autoApproveCommands = args.autoApproveCommands;
 				if (typeof args.fullAccess === "boolean") patch.fullAccess = args.fullAccess;
 				if (typeof args.theme === "string") patch.theme = args.theme === "light" ? "light" : "dark";
+				if (args.themePreset === "classic" || args.themePreset === "fairy" || args.themePreset === "klee") patch.themePreset = args.themePreset;
 				if (args.fontFamily === "system" || args.fontFamily === "mono") patch.fontFamily = args.fontFamily;
 				if (args.fontSize === "small" || args.fontSize === "normal" || args.fontSize === "large") patch.fontSize = args.fontSize;
 				for (const field of ["userAvatar", "assistantAvatar"] as const) {
@@ -414,21 +416,19 @@ export async function dispatchCommand(req: DesktopTransportRequest): Promise<Des
 			case "get_usage_overview": {
 				const entries = (await listSessions()).filter((item) => !item.legacy);
 				const instance = await ensureEngine();
-				const totals = { sessions: entries.length, turns: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, unavailableSessions: 0 };
+				const totals = emptyUsageOverview(entries.length);
 				for (let at = 0; at < entries.length; at += 4) {
 					await Promise.all(entries.slice(at, at + 4).map(async (entry) => {
 						try {
-							const messages = await instance.readMessages(entry.workspaceRoot, entry.id, 10000);
-							for (const message of messages) {
-								if (message.role !== "assistant" || !message.meta) continue;
-								if (message.meta.completedAt) totals.turns++;
-								totals.inputTokens += message.meta.inputTokens ?? 0;
-								totals.outputTokens += message.meta.outputTokens ?? 0;
-								totals.cacheReadTokens += message.meta.cacheReadTokens ?? 0;
-							}
+							const usage = await instance.readUsage(entry.workspaceRoot, entry.id, entry.kind ?? "work");
+							mergeUsageOverview(totals, usage);
+							totals.truncatedSessions += usage.truncatedSessions;
 						} catch { totals.unavailableSessions++; }
 					}));
 				}
+				totals.days.sort((a, b) => a.date.localeCompare(b.date));
+				totals.skills.sort((a, b) => b.calls - a.calls || a.id.localeCompare(b.id));
+				totals.models.sort((a, b) => b.tokens - a.tokens || a.id.localeCompare(b.id));
 				return respond(req, true, totals);
 			}
 			case "rename_session": {

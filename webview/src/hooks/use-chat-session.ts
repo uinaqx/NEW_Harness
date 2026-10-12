@@ -75,6 +75,8 @@ export function useChatSession() {
 	const [engine, setEngine] = useState<EngineStatusPayload | null>(null);
 	const [appInfo, setAppInfo] = useState<AppInfoPayload | null>(null);
 	const [settings, setSettings] = useState<ModelSettingsPayload | null>(null);
+	const appearanceSaveQueue = useRef<Promise<void>>(Promise.resolve());
+	const appearanceSaveSequence = useRef(0);
 	const [diffs, setDiffs] = useState<FileDiffEntryPayload[]>([]);
 	const [nodes, setNodes] = useState<ToolNodePayload[]>([]);
 	const [busyCommand, setBusyCommand] = useState<string | null>(null);
@@ -84,11 +86,12 @@ export function useChatSession() {
 	const sessionRef = useRef<string | null>(null);
 	const activeKindRef = useRef<"work" | "chat">("work");
 	const diffsStaleRef = useRef(true);
+	const diffRequestRef = useRef(0);
 	const turnGenerationRef = useRef(0);
+	const turnStartedAtRef = useRef(new Map<string, number>());
+	const completionSyncRef = useRef(new Map<string, number>());
 	const backgroundRuns = useRef(new Map<string, { messages: ChatMessage[]; status: ChatSessionStatus; config: ChatSessionConfig | null; summary: ChatSummary; runStartedAt: number | null; runEndedAt: number | null; runOutcome: ChatSessionStatus; hasUsage: boolean; streamingId: string | null; reasoningId: string | null; stepIntent: string | null; events: AgentChunkEvent[]; approvals: ToolApprovalRequestItem[]; questions: AgentQuestionRequestItem[] }>());
 	const stepIntentRef = useRef<string | null>(null);
-	streamingIdRef.current = streamingId;
-	sessionRef.current = sessionId;
 
 	/* ---------------- transport + engine state ---------------- */
 
@@ -159,6 +162,36 @@ export function useChatSession() {
 	}, [refreshEngine]);
 
 	/* ---------------- live chunks ---------------- */
+	const syncCompletedAnswer = useCallback((target: string, generation: number) => {
+		if (completionSyncRef.current.get(target) === generation) return;
+		completionSyncRef.current.set(target, generation);
+		void (async () => {
+			// The engine's idle notification may precede its persisted final text.
+			for (const delay of [150, 300, 600, 1000, 1500, 2500, 3500, 5000]) {
+				await new Promise((resolve) => setTimeout(resolve, delay));
+				if (sessionRef.current !== target || turnGenerationRef.current !== generation) return;
+				try {
+					const result = await desktopClient.invoke<{ messages: ChatMessage[] }>("read_session_messages", { sessionId: target, maxMessages: 1000 });
+					const history = result.messages ?? [];
+					const lastUser = history.findLastIndex((message) => message.role === "user");
+					const user = history[lastUser];
+					if (!user || user.createdAt < (turnStartedAtRef.current.get(target) ?? 0) - 2000) continue;
+					const answers = history.slice(lastUser + 1).filter((message) => message.role === "assistant");
+					const answer = answers.filter((message) => message.content.trim()).at(-1);
+					if (!answer) continue;
+					if (sessionRef.current !== target || turnGenerationRef.current !== generation) return;
+					setMessages((previous) => {
+						const previousUser = previous.findLastIndex((message) => message.role === "user");
+						if (previousUser < 0) return previous;
+						return [...previous.slice(0, previousUser), { ...previous[previousUser], content: user.content },
+							...previous.slice(previousUser + 1).filter((message) => message.role !== "assistant"),
+							{ ...answer, reasoning: answers.map((message) => message.reasoning).filter(Boolean).join("\n\n") || undefined }];
+					});
+					return;
+				} catch { /* Retry while the engine finalises its history. */ }
+			}
+		})();
+	}, []);
 
 	const handleChunk = useCallback((event: AgentChunkEvent) => {
 		const endReasoning = () => {
@@ -169,6 +202,7 @@ export function useChatSession() {
 		};
 		switch (event.stream) {
 			case "chat_queued_prompt_start":
+				turnStartedAtRef.current.set(event.sessionId, event.ts);
 				reasoningIdRef.current = null;
 				stepIntentRef.current = null;
 				turnGenerationRef.current++;
@@ -193,17 +227,17 @@ export function useChatSession() {
 				});
 				break;
 			}
-			case "chat_text":
+			case "chat_text": {
 				endReasoning();
+				const id = streamingIdRef.current ?? makeId("msg");
+				streamingIdRef.current = id;
+				setStreamingId(id);
 				setMessages((previous) => {
-					const id = streamingIdRef.current;
-					if (id) return previous.map((message) => (message.id === id ? { ...message, content: message.content + event.chunk } : message));
-					const newId = makeId("msg");
-					streamingIdRef.current = newId;
-					setStreamingId(newId);
-					return [...previous, { id: newId, sessionId: event.sessionId, role: "assistant" as const, content: event.chunk, createdAt: event.ts }];
+					if (previous.some((message) => message.id === id)) return previous.map((message) => (message.id === id ? { ...message, content: message.content + event.chunk } : message));
+					return [...previous, { id, sessionId: event.sessionId, role: "assistant" as const, content: event.chunk, createdAt: event.ts }];
 				});
 				break;
+			}
 			case "chat_reasoning": {
 				const parsed = parseJson<{ text?: string }>(event.chunk);
 				if (!parsed?.text) break;
@@ -332,34 +366,22 @@ export function useChatSession() {
 			case "chat_done": {
 				endReasoning();
 				setRunEndedAt(event.ts);
-				const payload = parseJson<{ reason?: string; text?: string }>(event.chunk);
-				setRunOutcome(payload?.reason === "error" ? "error" : payload?.reason === "aborted" ? "cancelled" : "completed");
+				const payload = parseJson<{ reason?: string; text?: string; diffs?: FileDiffEntryPayload[] }>(event.chunk);
+				const outcome = payload?.reason === "error" ? "error" : payload?.reason === "aborted" ? "cancelled" : "completed";
+				// One render releases the final answer and collapses the canvas.
+				setStatus(outcome);
+				setRunOutcome(outcome);
+				if (payload?.diffs) { setDiffs(payload.diffs); diffsStaleRef.current = false; }
 				if (payload?.reason === "error" && payload.text) setError(payload.text);
 				setStreamingId(null);
 				streamingIdRef.current = null;
-				if (activeKindRef.current === "chat" && payload?.reason !== "error") {
-					const generation = turnGenerationRef.current;
-					void (async () => {
-						for (const delay of [100, 350, 900, 1500]) {
-							await new Promise((resolve) => setTimeout(resolve, delay));
-							if (sessionRef.current !== event.sessionId || turnGenerationRef.current !== generation) return;
-							try {
-								const result = await desktopClient.invoke<{ messages: ChatMessage[] }>("read_session_messages", { sessionId: event.sessionId, maxMessages: 1000 });
-								const history = result.messages ?? [];
-								const lastUser = history.findLastIndex((message) => message.role === "user");
-								if (!history.slice(lastUser + 1).some((message) => message.role === "assistant" && message.content.trim())) continue;
-								if (sessionRef.current === event.sessionId && turnGenerationRef.current === generation) setMessages(history);
-								return;
-							} catch { /* the engine can still be finalising its history */ }
-						}
-					})();
-				}
+				if (payload?.reason === "completed") syncCompletedAnswer(event.sessionId, turnGenerationRef.current);
 				break;
 			}
 			default:
 				break;
 		}
-	}, []);
+	}, [syncCompletedAnswer]);
 
 	useEffect(() => {
 		const offChat = desktopClient.subscribe("chat_event", (payload) => {
@@ -383,6 +405,7 @@ export function useChatSession() {
 			}
 			setStatus(value.status);
 			if (["completed", "cancelled", "error"].includes(value.status)) setRunOutcome(value.status);
+			if (value.status === "completed") syncCompletedAnswer(value.sessionId, turnGenerationRef.current);
 			if (["idle", "completed", "error", "cancelled"].includes(value.status)) {
 				setRunEndedAt((previous) => previous ?? Date.now());
 				setStreamingId(null);
@@ -405,7 +428,7 @@ export function useChatSession() {
 			offApprovals();
 			offQuestions();
 		};
-	}, [handleChunk]);
+	}, [handleChunk, syncCompletedAnswer]);
 
 	/* ---------------- session actions ---------------- */
 
@@ -414,13 +437,14 @@ export function useChatSession() {
 			const target = id ?? sessionRef.current;
 			if (!target) return;
 			const generation = turnGenerationRef.current;
+			const request = ++diffRequestRef.current;
 			try {
 				const result = await desktopClient.invoke<{ diffs: FileDiffEntryPayload[] }>("list_session_diffs", { sessionId: target, latestTurn: true });
-				if (sessionRef.current !== target || turnGenerationRef.current !== generation) return;
+				if (sessionRef.current !== target || turnGenerationRef.current !== generation || diffRequestRef.current !== request) return;
 				setDiffs(result.diffs ?? []);
 				diffsStaleRef.current = false;
 			} catch (e) {
-				if (sessionRef.current === target && turnGenerationRef.current === generation) setError(e instanceof Error ? e.message : String(e));
+				if (sessionRef.current === target && turnGenerationRef.current === generation && diffRequestRef.current === request) setError(e instanceof Error ? e.message : String(e));
 			}
 		},
 		[],
@@ -450,6 +474,7 @@ export function useChatSession() {
 			const cached = id ? backgroundRuns.current.get(id) : undefined;
 			if (id && cached) {
 				backgroundRuns.current.delete(id);
+				setDiffs([]);
 				setSessionId(id);
 				setMessages(cached.messages);
 				setStatus(cached.status);
@@ -515,6 +540,7 @@ export function useChatSession() {
 				setMessages(messagesResult.messages ?? []);
 				const history = messagesResult.messages ?? [];
 				const lastUser = history.findLastIndex((message) => message.role === "user");
+				if (lastUser >= 0) turnStartedAtRef.current.set(id, history[lastUser].createdAt);
 				const turn = history.slice(lastUser + 1).filter((message) => message.role === "assistant");
 				setRunStartedAt(lastUser >= 0 ? history[lastUser].createdAt : null);
 				setRunEndedAt(turn.reduce((latest, message) => Math.max(latest, message.meta?.completedAt ?? 0), 0) || null);
@@ -528,6 +554,7 @@ export function useChatSession() {
 				activeKindRef.current = session.session?.config?.kind ?? "work";
 				setStatus(session.session?.status ?? "idle");
 				setRunOutcome(session.session?.status ?? "idle");
+				if (session.session?.status === "completed") syncCompletedAnswer(id, turnGenerationRef.current);
 				const approvalsResult = await desktopClient.invoke<{ approvals: ToolApprovalRequestItem[] }>("poll_tool_approvals", { sessionId: id });
 				if (sessionRef.current === id) setApprovals(approvalsResult.approvals ?? []);
 				const questionResult = await desktopClient.invoke<{ questions: AgentQuestionRequestItem[] }>("poll_agent_questions", { sessionId: id });
@@ -536,7 +563,7 @@ export function useChatSession() {
 				setError(e instanceof Error ? e.message : String(e));
 			}
 		},
-		[messages, status, config, summary, runStartedAt, runEndedAt, runOutcome, hasUsage, streamingId, approvals, questions, handleChunk, loadDiffs],
+		[messages, status, config, summary, runStartedAt, runEndedAt, runOutcome, hasUsage, streamingId, approvals, questions, handleChunk, loadDiffs, syncCompletedAnswer],
 	);
 
 	const createSession = useCallback(
@@ -610,6 +637,9 @@ export function useChatSession() {
 		const target = sessionRef.current;
 		if (!target || !prompt.trim()) return;
 		turnGenerationRef.current++;
+		turnStartedAtRef.current.set(target, Date.now());
+		streamingIdRef.current = null;
+		setStreamingId(null);
 		reasoningIdRef.current = null;
 		const optimisticId = makeId("msg");
 		const attached = options.inlineAttachments?.map((file) => file.name).filter(Boolean) ?? [];
@@ -708,10 +738,17 @@ export function useChatSession() {
 		[refreshSettings],
 	);
 
-	const saveTheme = useCallback(async (theme: "dark" | "light") => {
-		const result = await desktopClient.invoke<{ settings: ModelSettingsPayload }>("save_model_settings", { theme });
-		setSettings(result.settings);
+	const persistAppearance = useCallback((patch: { theme?: "dark" | "light"; themePreset?: "classic" | "fairy" | "klee"; fontFamily?: "system" | "mono"; fontSize?: "small" | "normal" | "large" }) => {
+		const sequence = ++appearanceSaveSequence.current;
+		const pending = appearanceSaveQueue.current.then(async () => {
+			const result = await desktopClient.invoke<{ settings: ModelSettingsPayload }>("save_model_settings", patch);
+			if (sequence === appearanceSaveSequence.current) setSettings(result.settings);
+		});
+		appearanceSaveQueue.current = pending.catch(() => {});
+		return pending;
 	}, []);
+
+	const saveTheme = useCallback((theme: "dark" | "light") => persistAppearance({ theme }), [persistAppearance]);
 
 	const setApprovalMode = useCallback(async (mode: "ask" | "auto" | "full") => {
 		const result = await desktopClient.invoke<{ settings: ModelSettingsPayload }>("save_model_settings", {
@@ -722,10 +759,7 @@ export function useChatSession() {
 		setSettings(result.settings);
 	}, []);
 
-	const saveAppearance = useCallback(async (patch: { theme?: "dark" | "light"; fontFamily?: "system" | "mono"; fontSize?: "small" | "normal" | "large" }) => {
-		const result = await desktopClient.invoke<{ settings: ModelSettingsPayload }>("save_model_settings", patch);
-		setSettings(result.settings);
-	}, []);
+	const saveAppearance = persistAppearance;
 
 	const saveAvatar = useCallback(async (role: "user" | "assistant", value: string) => {
 		const result = await desktopClient.invoke<{ settings: ModelSettingsPayload }>("save_model_settings", role === "user" ? { userAvatar: value } : { assistantAvatar: value });

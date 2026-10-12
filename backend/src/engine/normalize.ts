@@ -112,6 +112,12 @@ export class EventNormalizer {
 	private textByPart = new Map<string, string>();
 	/** partID -> accumulated reasoning text. */
 	private reasoningByPart = new Map<string, string>();
+	/** Deltas use field=text for both text and reasoning parts. */
+	private partTypes = new Map<string, string>();
+	private messageRoles = new Map<string, string>();
+	private untypedDeltas = new Map<string, string>();
+	/** Final prompt responses can overtake queued SSE chunks for these parts. */
+	private finalizedParts = new Set<string>();
 	/** callID -> last known node snapshot. */
 	private tools = new Map<string, ToolNodeSnapshot>();
 	/** callID -> tool name seen on the tool part (permissions reference callID). */
@@ -136,6 +142,17 @@ export class EventNormalizer {
 		return [...this.changedFiles];
 	}
 
+	/** Reconcile the authoritative reply, then ignore its delayed stream copies. */
+	reconcileFinal(reply: { info?: Record<string, unknown>; parts?: Array<Record<string, unknown>> }): NormalizedEvent[] {
+		const events: NormalizedEvent[] = [];
+		if (reply.info) events.push(...this.handle({ type: "message.updated", properties: { info: reply.info } }));
+		for (const part of reply.parts ?? []) {
+			events.push(...this.handlePart(part));
+			if (part.id && (part.type === "text" || part.type === "reasoning")) this.finalizedParts.add(String(part.id));
+		}
+		return events;
+	}
+
 	handle(payload: Record<string, unknown>): NormalizedEvent[] {
 		const type = String(payload.type ?? "");
 		const props = (payload.properties ?? {}) as Record<string, unknown>;
@@ -153,6 +170,7 @@ export class EventNormalizer {
 				const info = (props.info ?? {}) as Record<string, unknown>;
 				const messageId = String(info.id ?? "");
 				const role = String(info.role ?? "");
+				if (messageId && role) this.messageRoles.set(messageId, role);
 				if (role === "assistant") {
 					const error = info.error as Record<string, unknown> | undefined;
 					if (error) {
@@ -192,13 +210,19 @@ export class EventNormalizer {
 				const field = String(props.field ?? "");
 				const delta = String(props.delta ?? "");
 				const partId = String(props.partID ?? "");
-				if (!delta || !partId) break;
-				if (field === "reasoning") {
+				if (!delta || !partId || this.finalizedParts.has(partId)) break;
+				if (this.messageRoles.get(String(props.messageID ?? "")) === "user") break;
+				const partType = this.partTypes.get(partId);
+				if (field === "reasoning" || partType === "reasoning") {
 					this.reasoningByPart.set(partId, (this.reasoningByPart.get(partId) ?? "") + delta);
 					out.push({ kind: "reasoning", text: delta });
-				} else if (field === "text") {
+				} else if (field === "text" && partType === "text") {
 					this.textByPart.set(partId, (this.textByPart.get(partId) ?? "") + delta);
 					out.push({ kind: "text", text: delta });
+				} else if (field === "text" && !partType) {
+					// Wait for the part's type instead of displaying possible thought
+					// content as an answer during a reconnect or reordered delivery.
+					this.untypedDeltas.set(partId, (this.untypedDeltas.get(partId) ?? "") + delta);
 				}
 				break;
 			}
@@ -305,9 +329,16 @@ export class EventNormalizer {
 		const out: NormalizedEvent[] = [];
 		const partType = String(part.type ?? "");
 		const partId = String(part.id ?? "");
+		if (this.finalizedParts.has(partId)) return out;
+		this.partTypes.set(partId, partType);
+		if (this.messageRoles.get(String(part.messageID ?? "")) === "user") return out;
+		const buffered = this.untypedDeltas.get(partId) ?? "";
+		this.untypedDeltas.delete(partId);
+		const snapshot = String(part.text ?? "");
+		const accumulated = buffered.length > snapshot.length && buffered.startsWith(snapshot) ? buffered : snapshot;
 
 		if (partType === "text") {
-			const text = String(part.text ?? "");
+			const text = accumulated;
 			const seen = this.textByPart.get(partId) ?? "";
 			if (text.length > seen.length && text.startsWith(seen)) {
 				const suffix = text.slice(seen.length);
@@ -318,7 +349,7 @@ export class EventNormalizer {
 		}
 
 		if (partType === "reasoning") {
-			const text = String(part.text ?? "");
+			const text = accumulated;
 			const seen = this.reasoningByPart.get(partId) ?? "";
 			if (text.length > seen.length && text.startsWith(seen)) {
 				const suffix = text.slice(seen.length);

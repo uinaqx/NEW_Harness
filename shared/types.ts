@@ -99,6 +99,32 @@ export interface ChatSummary {
 	cacheReadTokens?: number;
 }
 
+/** Aggregated local records only; never includes message text or tool output. */
+export interface UsageDay {
+	date: string;
+	inputTokens: number;
+	outputTokens: number;
+	cacheReadTokens: number;
+	turns: number;
+}
+export interface UsageOverviewPayload {
+	sessions: number;
+	turns: number;
+	inputTokens: number;
+	outputTokens: number;
+	cacheReadTokens: number;
+	unavailableSessions: number;
+	truncatedSessions: number;
+	workTurns: number;
+	chatTurns: number;
+	toolCalls: number;
+	totalDurationMs: number;
+	longestTurnMs: number;
+	days: UsageDay[];
+	skills: Array<{ id: string; calls: number }>;
+	models: Array<{ id: string; replies: number; tokens: number }>;
+}
+
 export interface SessionRecord {
 	id: string;
 	createdAt: number;
@@ -280,6 +306,7 @@ export interface ModelSettingsPayload {
 	autoApproveCommands: boolean;
 	fullAccess: boolean;
 	theme: "dark" | "light";
+	themePreset: "classic" | "fairy" | "klee";
 	fontFamily: "system" | "mono";
 	fontSize: "small" | "normal" | "large";
 	userAvatar: string;

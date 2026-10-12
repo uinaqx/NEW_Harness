@@ -31,14 +31,24 @@ export function App() {
 	const [theme, setTheme] = useState<"dark" | "light">(() => {
 		try { return localStorage.getItem("harness-theme") === "light" ? "light" : "dark"; } catch { return "dark"; }
 	});
+	const [themePreset, setThemePreset] = useState<"classic" | "fairy" | "klee">(() => {
+		try { const value = localStorage.getItem("harness-theme-preset"); return value === "fairy" || value === "klee" ? value : "classic"; } catch { return "classic"; }
+	});
 
 	useEffect(() => {
 		if (api.settings?.theme) setTheme(api.settings.theme);
 	}, [api.settings?.theme]);
 	useEffect(() => {
+		if (api.settings?.themePreset) setThemePreset(api.settings.themePreset);
+	}, [api.settings?.themePreset]);
+	useEffect(() => {
 		document.documentElement.classList.toggle("dark", theme === "dark");
 		try { localStorage.setItem("harness-theme", theme); } catch {}
 	}, [theme]);
+	useEffect(() => {
+		document.documentElement.dataset.themePreset = themePreset;
+		try { localStorage.setItem("harness-theme-preset", themePreset); } catch {}
+	}, [themePreset]);
 	useEffect(() => {
 		document.documentElement.dataset.fontFamily = api.settings?.fontFamily ?? "system";
 		document.documentElement.dataset.fontSize = api.settings?.fontSize ?? "normal";
@@ -227,11 +237,7 @@ export function App() {
 				) : (
 					<>
 						<div className="app-conversation">
-				<ChatMessages messages={api.messages} status={api.status} streamingId={api.streamingId} error={api.error} showWaiting={activeKind === "chat"} showReasoning={activeKind === "chat"} userAvatar={api.settings?.userAvatar} assistantAvatar={api.settings?.assistantAvatar}>
-								<TaskResult startedAt={api.runStartedAt} endedAt={api.runEndedAt} busy={api.isBusy} status={api.runOutcome} summary={api.summary} hasUsage={api.hasUsage} diffs={activeKind === "work" ? api.diffs : []} onOpenFile={openFile} onReview={() => setDiffOpen(true)} />
-							</ChatMessages>
-							{api.messages.length === 0 && <Welcome kind={activeKind} onPick={(prompt) => { void send(prompt).catch((cause: unknown) => api.setError(cause instanceof Error ? cause.message : String(cause))); }} hasWorkspace={!!draftWorkspace} onOpenSettings={() => { void chooseWorkspace().then((path) => { if (path) setDraftWorkspace(path); }).catch((cause: unknown) => api.setError(cause instanceof Error ? cause.message : String(cause))); }} />}
-							{hasSession && activeKind === "work" && <ExecutionCanvas
+				<ChatMessages messages={api.messages} status={api.status} streamingId={api.streamingId} error={api.error} showWaiting={activeKind === "chat"} showReasoning={activeKind === "chat"} deferActiveAnswer={activeKind === "work"} userAvatar={api.settings?.userAvatar} assistantAvatar={themePreset === "classic" ? api.settings?.assistantAvatar : `theme:${themePreset}`} assistantLabel={themePreset === "fairy" ? "Fairy" : themePreset === "klee" ? "可莉" : "某科学的Agent"} afterMessages={hasSession && activeKind === "work" && <ExecutionCanvas
 								messages={api.messages}
 								status={api.status}
 								sessionId={api.sessionId}
@@ -241,7 +247,10 @@ export function App() {
 								onApprove={api.approve}
 								onReject={api.reject}
 								onAnswer={api.answerQuestion}
-							/>}
+							/>}>
+								<TaskResult startedAt={api.runStartedAt} endedAt={api.runEndedAt} busy={api.isBusy} status={api.runOutcome} summary={api.summary} hasUsage={api.hasUsage} diffs={activeKind === "work" ? api.diffs : []} onOpenFile={openFile} onReview={() => setDiffOpen(true)} />
+							</ChatMessages>
+							{api.messages.length === 0 && <Welcome kind={activeKind} onPick={(prompt) => { void send(prompt).catch((cause: unknown) => api.setError(cause instanceof Error ? cause.message : String(cause))); }} hasWorkspace={!!draftWorkspace} onOpenSettings={() => { void chooseWorkspace().then((path) => { if (path) setDraftWorkspace(path); }).catch((cause: unknown) => api.setError(cause instanceof Error ? cause.message : String(cause))); }} />}
 						</div>
 						<ChatInputBar
 							onSend={send}
@@ -302,7 +311,16 @@ export function App() {
 				onTest={api.testConnection}
 				onValidateWorkspace={api.validateWorkspace}
 				onPickWorkspace={api.pickWorkspace}
-				onAppearanceChange={api.saveAppearance}
+				onAppearanceChange={async (patch) => {
+					if (patch.theme) setTheme(patch.theme);
+					if (patch.themePreset) setThemePreset(patch.themePreset);
+					try { await api.saveAppearance(patch); }
+					catch (error) {
+						setTheme(api.settings?.theme ?? "dark");
+						setThemePreset(api.settings?.themePreset ?? "classic");
+						throw error;
+					}
+				}}
 				onAvatarChange={api.saveAvatar}
 			/>
 			{projectOpen && <div className="dialog-overlay" onClick={() => setProjectOpen(false)}>

@@ -1,0 +1,117 @@
+/* Character themes layer on the semantic palette. Neutral surfaces remain dominant. */
+:root[data-theme-preset="fairy"] {
+	--background: #f2f6f8; --foreground: #1c2b39; --card: #f9fbfc; --card-foreground: #1c2b39;
+	--popover: #fff; --popover-foreground: #1c2b39; --muted: #e8eff3; --muted-foreground: #586d7a;
+	--primary: #427a9b; --primary-foreground: #fff; --primary-emphasis: #315f80;
+	--secondary: #e5eef2; --secondary-foreground: #263a4a; --accent: #e3edf3; --accent-foreground: #20374a;
+	--border: #cddde5; --input: #bcd0db; --ring: #478cb0; --surface-hover: #e4edf2;
+	--sidebar: #eaf1f5; --sidebar-background: #eaf1f5; --sidebar-foreground: #263a4a;
+	--sidebar-border: #c8d9e3; --sidebar-accent: #d9e8f0; --sidebar-accent-foreground: #1c2b39;
+	--trace-line: #83b1c7; --trace-line-soft: #bdd6e2; --harness-glow: #39739423;
+	--brand-bg-a: #294967; --brand-bg-b: #17293d; --brand-orbit-a: #a5e6ed; --brand-orbit-b: #8eafdf;
+	--brand-outline: #8fc7da; --brand-core: #f1fcff; --brand-core-shadow: #95d9e8;
+	--theme-ornament: #4b8dae;
+}
+:root.dark[data-theme-preset="fairy"] {
+	--background: #101822; --foreground: #edf4f8; --card: #17212d; --card-foreground: #edf4f8;
+	--popover: #1b2837; --popover-foreground: #edf4f8; --muted: #202f3e; --muted-foreground: #a9bdca;
+	--primary: #9bd4e5; --primary-foreground: #102130; --primary-emphasis: #bee8f3;
+	--secondary: #263848; --secondary-foreground: #e5f2f7; --accent: #243749; --accent-foreground: #e9f6fa;
+	--border: #304657; --input: #40596b; --ring: #8ed7e9; --surface-hover: #253747;
+	--sidebar: #111e2b; --sidebar-background: #111e2b; --sidebar-foreground: #e8f0f4;
+	--sidebar-border: #2c4051; --sidebar-accent: #283d50; --sidebar-accent-foreground: #f3fbff;
+	--trace-line: #658ea6; --trace-line-soft: #3d5a6d; --harness-glow: #58b4de18;
+	--brand-bg-a: #294967; --brand-bg-b: #101c32; --brand-orbit-a: #9be7f0; --brand-orbit-b: #9bb9ef;
+	--brand-outline: #74aeca; --brand-core: #f1fcff; --brand-core-shadow: #8dd9eb;
+	--theme-ornament: #8dd9eb;
+}
+:root[data-theme-preset="klee"] {
+	--background: #f8f5f2; --foreground: #2d2928; --card: #fffbf8; --card-foreground: #2d2928;
+	--popover: #fffdfa; --popover-foreground: #2d2928; --muted: #f2eae5; --muted-foreground: #70645f;
+	--primary: #a95f5d; --primary-foreground: #fff; --primary-emphasis: #8e4e4f;
+	--secondary: #f1e8df; --secondary-foreground: #473a35; --accent: #f3e5e1; --accent-foreground: #493735;
+	--border: #e4d4cc; --input: #d8c5bd; --ring: #af7370; --surface-hover: #f2e7e1;
+	--sidebar: #f4eee9; --sidebar-background: #f4eee9; --sidebar-foreground: #403633;
+	--sidebar-border: #e2d3cb; --sidebar-accent: #edddd4; --sidebar-accent-foreground: #352c2a;
+	--trace-line: #c5948c; --trace-line-soft: #e6c9bf; --harness-glow: #a553421c;
+	--brand-bg-a: #9d5a50; --brand-bg-b: #5d3737; --brand-orbit-a: #ffe2b1; --brand-orbit-b: #e9a6a0;
+	--brand-outline: #e8be9c; --brand-core: #fff9e9; --brand-core-shadow: #f3bc90;
+	--theme-ornament: #bd7770;
+}
+:root.dark[data-theme-preset="klee"] {
+	--background: #201e1f; --foreground: #f4eeeb; --card: #2b2829; --card-foreground: #f4eeeb;
+	--popover: #332e2e; --popover-foreground: #f4eeeb; --muted: #342e2e; --muted-foreground: #beaaa3;
+	--primary: #e4aaa2; --primary-foreground: #302224; --primary-emphasis: #f4c1b3;
+	--secondary: #3b3332; --secondary-foreground: #f3e9e4; --accent: #443331; --accent-foreground: #f9eeea;
+	--border: #4b3d3b; --input: #624f4b; --ring: #e3a79c; --surface-hover: #3a3131;
+	--sidebar: #242121; --sidebar-background: #242121; --sidebar-foreground: #eee4e0;
+	--sidebar-border: #463a38; --sidebar-accent: #483635; --sidebar-accent-foreground: #fff4ed;
+	--trace-line: #ac796f; --trace-line-soft: #674b45; --harness-glow: #e6a49317;
+	--brand-bg-a: #a46453; --brand-bg-b: #4b3030; --brand-orbit-a: #ffe0a7; --brand-orbit-b: #eaa49c;
+	--brand-outline: #d9ac8f; --brand-core: #fff5dd; --brand-core-shadow: #eaa680;
+	--theme-ornament: #e3a79c;
+}
+
+:root[data-theme-preset="fairy"] .app-main,
+:root[data-theme-preset="klee"] .app-main {
+	background-color: var(--background);
+	background-image: radial-gradient(circle at 88% 11%, color-mix(in srgb, var(--theme-ornament) 6%, transparent), transparent 25%);
+}
+:root[data-theme-preset="fairy"] .app-main::before,
+:root[data-theme-preset="klee"] .app-main::before { content: ""; position: absolute; right: 40px; top: 76px; width: 250px; height: 250px; background: var(--theme-ornament); pointer-events: none; opacity: .035; mask-size: contain; mask-position: center; mask-repeat: no-repeat; }
+:root[data-theme-preset="fairy"] .app-main::before { background: transparent url("./assets/theme/fairy-circle-icon.png") center / contain no-repeat; opacity: .055; }
+:root[data-theme-preset="klee"] .app-main::before { background: transparent url("./assets/theme/klee-dodoco-bomb.png") center / contain no-repeat; width: 220px; height: 220px; opacity: .065; }
+:root[data-theme-preset="fairy"] .app-sidebar,
+:root[data-theme-preset="klee"] .app-sidebar { position: relative; isolation: isolate; }
+.sidebar-theme-art { display: none; }
+:root[data-theme-preset="fairy"] .sidebar-theme-art,
+:root[data-theme-preset="klee"] .sidebar-theme-art { display: block; position: absolute; right: -32px; top: 178px; width: 180px; height: 180px; color: var(--theme-ornament); opacity: .09; pointer-events: none; z-index: -1; }
+:root[data-theme-preset="fairy"] .theme-klee-art,
+:root[data-theme-preset="klee"] .theme-fairy-art { display: none; }
+:root[data-theme-preset="fairy"] .sidebar-theme-art.theme-fairy-art { background: url("./assets/theme/fairy-circle-icon.png") center / contain no-repeat; opacity: .13; }
+:root[data-theme-preset="klee"] .sidebar-theme-art.theme-klee-art { background: url("./assets/theme/klee-dodoco-bomb.png") center / contain no-repeat; width: 180px; right: -28px; opacity: .13; }
+:root[data-theme-preset="fairy"] .app-sidebar::before,
+:root[data-theme-preset="klee"] .app-sidebar::before { content: ""; position: absolute; inset: 0 0 auto; height: 190px; pointer-events: none; z-index: -1; opacity: .34; }
+:root[data-theme-preset="fairy"] .app-sidebar::before {
+	background-image: linear-gradient(var(--theme-ornament) 1px, transparent 1px), linear-gradient(90deg, var(--theme-ornament) 1px, transparent 1px);
+	background-size: 30px 30px; mask-image: linear-gradient(#000, transparent);
+}
+:root[data-theme-preset="klee"] .app-sidebar::before {
+	background-image: radial-gradient(circle at 74% 13%, transparent 0 15px, var(--theme-ornament) 15px 16px, transparent 17px), radial-gradient(circle at 74% 13%, var(--theme-ornament) 0 3px, transparent 4px), radial-gradient(circle at 20% 70%, var(--theme-ornament) 0 2px, transparent 3px);
+	background-size: 150px 128px; mask-image: linear-gradient(#000, transparent);
+}
+:root[data-theme-preset="fairy"] .sidebar-brand,
+:root[data-theme-preset="klee"] .sidebar-brand { border-bottom: 1px solid color-mix(in srgb, var(--theme-ornament) 40%, transparent); }
+:root[data-theme-preset="fairy"] .sidebar-brand strong,
+:root[data-theme-preset="klee"] .sidebar-brand strong { color: var(--foreground); }
+:root[data-theme-preset="fairy"] .sidebar-chat[data-active="true"],
+:root[data-theme-preset="klee"] .sidebar-chat[data-active="true"] { background: var(--sidebar-accent); box-shadow: inset 2px 0 var(--theme-ornament); }
+:root[data-theme-preset="fairy"] .sidebar-primary button:hover svg,
+:root[data-theme-preset="klee"] .sidebar-primary button:hover svg,
+:root[data-theme-preset="fairy"] .sidebar-footer button:hover svg,
+:root[data-theme-preset="klee"] .sidebar-footer button:hover svg { color: var(--theme-ornament); }
+:root[data-theme-preset="fairy"] .harness-trace-row[data-active="true"] .harness-trace-branch,
+:root[data-theme-preset="fairy"] .harness-trace-row[data-active="true"] .harness-trace-merge,
+:root[data-theme-preset="klee"] .harness-trace-row[data-active="true"] .harness-trace-branch,
+:root[data-theme-preset="klee"] .harness-trace-row[data-active="true"] .harness-trace-merge { color: var(--theme-ornament); }
+:root[data-theme-preset="fairy"] .msg-avatar.assistant,
+:root[data-theme-preset="klee"] .msg-avatar.assistant { background: var(--card); border: 1px solid var(--ring); overflow: hidden; }
+
+.theme-preset-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; max-width: 650px; }
+.theme-preset { display: grid; grid-template-columns: 40px 1fr; grid-template-rows: auto auto 15px; column-gap: 10px; row-gap: 3px; align-items: center; text-align: left; min-height: 112px; padding: 14px; border: 1px solid var(--border); border-radius: 13px; background: var(--card); }
+.theme-preset:hover { background: var(--surface-hover); }
+.theme-preset[aria-pressed="true"] { border-color: var(--ring); box-shadow: 0 0 0 1px var(--ring); }
+.theme-preset-art { grid-row: 1 / 3; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 9px; overflow: hidden; background: var(--muted); }
+.theme-preset-art img { width: 100%; height: 100%; object-fit: cover; }
+.theme-preset strong { font-size: 13px; line-height: 1.2; }
+.theme-preset small { color: var(--muted-foreground); font-size: 10px; line-height: 1.35; }
+.theme-preset-swatches { grid-column: 1 / 3; display: flex; gap: 4px; align-self: end; }
+.theme-preset-swatches i { width: 18px; height: 5px; border-radius: 3px; background: #2c2c2c; }
+.theme-preset[data-preset="classic"] .theme-preset-swatches i:nth-child(2) { background: #9e9e9e; }
+.theme-preset[data-preset="classic"] .theme-preset-swatches i:nth-child(3) { background: #f2f2f2; border: 1px solid #ccc; }
+.theme-preset[data-preset="fairy"] .theme-preset-swatches i:nth-child(2) { background: #487b9c; }
+.theme-preset[data-preset="fairy"] .theme-preset-swatches i:nth-child(3) { background: #a1d5e6; }
+.theme-preset[data-preset="klee"] .theme-preset-swatches i:nth-child(2) { background: #ab605d; }
+.theme-preset[data-preset="klee"] .theme-preset-swatches i:nth-child(3) { background: #e5ada1; }
+@media (max-width: 760px) { .theme-preset-grid { grid-template-columns: 1fr; } .theme-preset { min-height: 78px; grid-template-rows: auto auto; } .theme-preset-swatches { display: none; } }
+@media (prefers-reduced-motion: reduce) { .theme-preset { transition: none; } }

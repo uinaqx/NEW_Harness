@@ -16,7 +16,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export const APP_NAME = "Harness";
-export const APP_VERSION = "0.9.0";
+export const APP_VERSION = "1.0.4";
 /** Bumped whenever the on-disk layout changes. */
 export const DATA_LAYOUT_VERSION = 2;
 

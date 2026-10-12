@@ -92,8 +92,12 @@ export function Sidebar({ sessions, projects, activeId, activeWorkspace, onSelec
 
 	return (
 		<aside className="app-sidebar">
+			<div className="sidebar-theme-art theme-fairy-art" aria-hidden="true" />
+			<div className="sidebar-theme-art theme-klee-art" aria-hidden="true" />
 			<div className="sidebar-brand"><BrandMark size={28} /><strong>某科学的Agent</strong><small className="sidebar-brand-version">v{appPackage.version}</small></div>
 			<nav className="sidebar-primary" aria-label="主导航">
+				<button onClick={() => onNew()}><MessageSquarePlus size={17} /> Work</button>
+				<button onClick={onNewChat}><MessageCircle size={17} /> Chat</button>
 				<button onClick={onNewProject}><FolderPlus size={17} /> 新建项目</button>
 			</nav>
 			<div className="sidebar-list">
@@ -119,7 +123,7 @@ export function Sidebar({ sessions, projects, activeId, activeWorkspace, onSelec
 					})}
 				</section>
 				<section className="sidebar-section sidebar-chat-section">
-					<div className="sidebar-section-label"><span>聊天</span><button onClick={onNewChat} title="开始新聊天"><Plus size={14} /></button></div>
+					<div className="sidebar-section-label"><span>Chat</span><button onClick={onNewChat} title="开始新聊天"><Plus size={14} /></button></div>
 					{chatSessions.length ? chatSessions.map(renderSession) : <button className="sidebar-project-empty" onClick={onNewChat}>点击开聊，无需选择工作区</button>}
 				</section>
 			</div>

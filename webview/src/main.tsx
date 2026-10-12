@@ -4,6 +4,7 @@ import { App } from "./App";
 import "./index.css";
 import "./index-engine.css";
 import "./index-codex.css";
+import "./theme-presets.css";
 
 createRoot(document.getElementById("root")!).render(
 	<StrictMode>

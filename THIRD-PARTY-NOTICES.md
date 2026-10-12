@@ -89,6 +89,17 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - 版本：`^1`
 - 许可证：ISC。以打包后的产物形式包含。
 
+## react-markdown / remark-gfm（Markdown 显示）
+
+- 版本：`react-markdown 10.1.0` / `remark-gfm 4.0.1`，精确依赖树见 `bun.lock`。
+- 许可证：MIT。以前端打包产物形式包含，保留各组件许可证。
+
+## Fairy / 可莉主题游戏图片（仅本地预览）
+
+- 包含 Fairy 游戏界面头像、圆形标记，可莉角色头像、嘟嘟可炸弹道具及火元素标记。
+- 游戏美术权利属于 HoYoverse / miHoYo；不属于本项目 MIT 许可证范围。
+- 来源为游戏 Wiki 的公开图片 CDN，完整来源与权利记录见 `webview/src/assets/theme/SOURCES.md`（安装目录 `theme-assets/SOURCES.md`）。本地预览尚未公开发布。
+
 ## Tauri（桌面外壳）
 
 - 版本：`2.x`（构建时实测 crate 2.x / CLI 2.11）
@@ -110,3 +121,42 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Harness 仓库包含一份 Cline 源码快照（Apache-2.0，见仓库根 `LICENSE`），
 但 Harness 应用本身不链接、不加载 Cline 的任何代码，仅在视觉上参考了其「执行画布」交互。
+
+## jsdiff（文本差异与补丁，后端内嵌）
+
+- 版本：`diff@8.0.2`，由 Bun 锁文件固定。
+- 来源：[kpdecker/jsdiff v8.0.2](https://github.com/kpdecker/jsdiff/tree/v8.0.2)
+- 许可证：BSD-3-Clause。用于构建真实文本差异，并合并同一轮的连续编辑。
+
+```text
+BSD 3-Clause License
+
+Copyright (c) 2009-2015, Kevin Decker <kpdecker@gmail.com>
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+```

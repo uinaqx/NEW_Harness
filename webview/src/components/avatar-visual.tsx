@@ -1,5 +1,7 @@
 import { Atom, Bot, Moon, Sparkles, UserRound } from "lucide-react";
 import { BrandMark } from "./brand-mark";
+import kleeAvatar from "../assets/theme/klee-character-icon.png";
+import fairyAvatar from "../assets/theme/fairy-avatar.png";
 
 export const AVATAR_PRESETS = [
 	{ id: "preset:user", label: "人物" },
@@ -12,6 +14,8 @@ export const AVATAR_PRESETS = [
 
 export function AvatarVisual({ value, size = 26 }: { value?: string; size?: number }) {
 	if (value && /^data:image\/(?:png|jpeg|webp);base64,/i.test(value)) return <img src={value} alt="自定义头像" width={size} height={size} draggable={false} />;
+	if (value === "theme:klee") return <img src={kleeAvatar} alt="可莉主题头像" width={size} height={size} draggable={false} />;
+	if (value === "theme:fairy") return <img src={fairyAvatar} alt="Fairy 游戏内头像" width={size} height={size} draggable={false} />;
 	const iconSize = Math.round(size * .58);
 	switch (value) {
 		case "preset:brand": return <BrandMark size={size} />;

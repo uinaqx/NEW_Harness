@@ -225,6 +225,7 @@ export function startMockProvider(options: MockProviderOptions = {}): MockProvid
 				}
 				chunks.push(sseChunk({ ...base(id, model), ...delta({}, "tool_calls") }));
 			} else {
+				if (lastUserText.includes("思考分离")) for (const p of pieces("Let me inspect the request. I should answer in Chinese.")) chunks.push(sseChunk({ ...base(id, model), ...delta({ reasoning_content: p }) }));
 				for (const p of pieces(finalText, isSlow ? 2 : 9)) {
 					chunks.push(sseChunk({ ...base(id, model), ...delta({ content: p }) }));
 				}
